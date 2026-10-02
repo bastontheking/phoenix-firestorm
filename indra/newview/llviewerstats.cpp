@@ -230,6 +230,10 @@ LLTrace::SampleStatHandle<F64Milliseconds > FRAMETIME_JITTER("frametimejitter", 
                                             FRAMETIME_JITTER_95TH("frametimejitter95", "99th percentile of frametime jitter over the last 5 seconds."),
                                             FRAMETIME_99TH("frametime99", "99th percentile of frametime over the last 5 seconds."),
                                             FRAMETIME_95TH("frametime95", "99th percentile of frametime over the last 5 seconds."),
+                                            FRAMETIME_999TH("frametime999", "99.9th percentile of frametime over the sample period."),
+                                            FRAMETIME_1PCT_LOW("frametime1pctlow", "Mean frametime of the slowest 1% of frames over the sample period."),
+                                            FRAMETIME_01PCT_LOW("frametime01pctlow", "Mean frametime of the slowest 0.1% of frames over the sample period."),
+                                            FRAMETIME_MEDIAN("frametimemedian", "Median frametime over the sample period."),
                                             FRAMETIME_JITTER_CUMULATIVE("frametimejitcumulative", "Cumulative frametime jitter over the session."),
                                             FRAMETIME_JITTER_STDDEV("frametimejitterstddev", "Standard deviation of frametime jitter in a 5 second period."),
                                             FRAMETIME_STDDEV("frametimestddev", "Standard deviation of frametime in a 5 second period.");
@@ -239,6 +243,8 @@ LLTrace::SampleStatHandle<U32> FRAMETIME_JITTER_EVENTS("frametimeevents", "Numbe
                                 FRAMETIME_JITTER_EVENTS_LAST_MINUTE("frametimeeventslastmin", "Number of frametime events in the last minute.");
 
 LLTrace::SampleStatHandle<U64> DOFRAME_TIME_US("doframetimeus", "doFrame wall time in microseconds.");
+
+LLTrace::SampleStatHandle<U32> FRAMETIME_SPIKES("frametimespikes", "Frames slower than twice the median over the sample period."); // <FS:Perf>
 
 LLTrace::SampleStatHandle<F64> NOTRMALIZED_FRAMETIME_JITTER_SESSION("normalizedframetimejitter", "Normalized frametime jitter over the session.");
 LLTrace::SampleStatHandle<F64> NFTV("nftv", "Normalized frametime variation.");
@@ -376,6 +382,51 @@ void LLViewerStats::updateFrameStats(const F64Seconds time_diff)
             F64Seconds ninety_fifth_percentile = calcPercentile(mFrameTimes, 0.95);
             sample(LLStatViewer::FRAMETIME_99TH, ninety_ninth_percentile);
             sample(LLStatViewer::FRAMETIME_95TH, ninety_fifth_percentile);
+
+            // <FS:Perf> Frame pacing: tail latency matters more than the average.
+            {
+                const size_t n = mFrameTimes.size();
+                const F64Seconds median = calcPercentile(mFrameTimes, 0.5);
+                const F64Seconds p999 = calcPercentile(mFrameTimes, 0.999);
+                auto tail_mean = [&](double fraction)
+                {
+                    const size_t k = llmax((size_t)1, (size_t)std::ceil(n * fraction));
+                    F64 sum = 0.0;
+                    for (size_t i = n - k; i < n; ++i)
+                    {
+                        sum += mFrameTimes[i].value();
+                    }
+                    return F64Seconds(sum / k);
+                };
+                const F64Seconds low1 = tail_mean(0.01);
+                const F64Seconds low01 = tail_mean(0.001);
+                U32 spikes = 0;
+                for (auto it = mFrameTimes.rbegin(); it != mFrameTimes.rend() && *it > median * 2.0; ++it)
+                {
+                    ++spikes;
+                }
+                F64 total = 0.0;
+                for (const auto& ft : mFrameTimes)
+                {
+                    total += ft.value();
+                }
+
+                sample(LLStatViewer::FRAMETIME_MEDIAN, median);
+                sample(LLStatViewer::FRAMETIME_999TH, p999);
+                sample(LLStatViewer::FRAMETIME_1PCT_LOW, low1);
+                sample(LLStatViewer::FRAMETIME_01PCT_LOW, low01);
+                sample(LLStatViewer::FRAMETIME_SPIKES, spikes);
+
+                mFramePacing.mFrames = (U32)n;
+                mFramePacing.mMedianMs = median.value() * 1000.0;
+                mFramePacing.mP99Ms = ninety_ninth_percentile.value() * 1000.0;
+                mFramePacing.mP999Ms = p999.value() * 1000.0;
+                mFramePacing.mOnePctLowFPS = low1.value() > 0.0 ? 1.0 / low1.value() : 0.0;
+                mFramePacing.mPointOnePctLowFPS = low01.value() > 0.0 ? 1.0 / low01.value() : 0.0;
+                mFramePacing.mAvgFPS = total > 0.0 ? n / total : 0.0;
+                mFramePacing.mSpikes = spikes;
+            }
+            // </FS:Perf>
 
             frame_time_stddev = calcStddev(mFrameTimesJitter);
             sample(LLStatViewer::FRAMETIME_JITTER_STDDEV, frame_time_stddev);

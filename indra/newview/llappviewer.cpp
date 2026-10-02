@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llappviewer.h"
+#include "lljobsystem.h" // <FS:Perf>
 
 // Viewer includes
 #include "llversioninfo.h"
@@ -2435,6 +2436,7 @@ bool LLAppViewer::cleanup()
     {
         mGeneralThreadPool->close();
     }
+    LL::JobSystem::shutdown(); // <FS:Perf>
 
     sTextureFetch->shutDownTextureCacheThread() ;
     LLLFSThread::sLocal->shutdown();
@@ -2654,6 +2656,16 @@ bool LLAppViewer::initThreads()
 
     // general task background thread (LLPerfStats, etc)
     LLAppViewer::instance()->initGeneralThread();
+
+    // <FS:Perf> Fork-join workers for data-parallel per-frame work. Image
+    // decode threads are bursty, so only count half of them as reserved;
+    // fetch, cache and mesh threads are mostly blocked on I/O.
+    {
+        U32 job_threads = gSavedSettings.getU32("FSJobSystemThreads");
+        size_t reserved = 2 + (size_t)image_decode_count / 2;
+        LL::JobSystem::startup(job_threads, reserved);
+    }
+    // </FS:Perf>
 
     LLAppViewer::sPurgeDiskCacheThread = new LLPurgeDiskCacheThread();
 

@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llvoavatar.h"
+#include "llframebudget.h" // <FS:Perf>
 
 #include <stdio.h>
 #include <ctype.h>
@@ -5661,6 +5662,44 @@ void LLVOAvatar::updateRootPositionAndRotation(LLAgent& agent, F32 speed, bool w
 }
 
 //------------------------------------------------------------------------
+// <FS:Perf> skipAnimationThisFrame()
+//
+// Animation level of detail. An avatar a few dozen pixels tall does not
+// need its skeleton evaluated at the full frame rate. The period comes from
+// LLFrameBudget based on the fraction of the viewport height the avatar
+// covers, and is staggered by UUID so avatars do not all update on the same
+// frame. Self, UI avatars, selected/edited avatars and avatars that are
+// close to the camera are never skipped.
+//------------------------------------------------------------------------
+bool LLVOAvatar::skipAnimationThisFrame()
+{
+    mAnimUpdatePeriod = 1;
+    if (isSelf() || isUIAvatar() || mDrawable.isNull() || mSpecialRenderMode != 0 || mNeedsAnimUpdate || isSelected())
+    {
+        return false;
+    }
+
+    const F32 distance = mDrawable->mDistanceWRTCamera;
+    const F32 height = llmax(mBodySize.mV[VZ], 0.5f);
+    if (distance <= height * 2.f)
+    {
+        return false;
+    }
+
+    LLViewerCamera* camera = LLViewerCamera::getInstance();
+    const F32 tan_half_fov = tanf(camera->getView() * 0.5f);
+    const F32 screen_fraction = height / llmax(2.f * distance * tan_half_fov, 0.001f);
+
+    mAnimUpdatePeriod = LLFrameBudget::getAvatarAnimPeriod(screen_fraction);
+    if (mAnimUpdatePeriod <= 1)
+    {
+        return false;
+    }
+    return ((LLDrawable::getCurrentFrame() + mID.mData[1]) % mAnimUpdatePeriod) != 0;
+}
+// </FS:Perf>
+
+//------------------------------------------------------------------------
 // LLVOAvatar::computeNeedsUpdate()
 //
 // Most of the logic here is to figure out when to periodically update impostors.
@@ -5812,6 +5851,13 @@ bool LLVOAvatar::updateCharacter(LLAgent &agent)
     else if (mSpecialRenderMode == 1) // Animation Preview
     {
         updateMotions(LLCharacter::FORCE_UPDATE);
+    }
+    else if (skipAnimationThisFrame()) // <FS:Perf> animation LOD for avatars small on screen
+    {
+        // Keep motion bookkeeping (activation/expiry) running, but hold the
+        // pose. Root position and joint world matrices are still updated
+        // below, so the avatar keeps moving smoothly with its object.
+        updateMotions(LLCharacter::HIDDEN_UPDATE);
     }
     else
     {
@@ -12229,6 +12275,13 @@ void LLVOAvatar::updateImpostors()
 {
     LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
 
+    // <FS:Perf> Each impostor regeneration is a full state sort + render
+    // pass. Regenerating every stale impostor in the same frame produced
+    // large spikes in crowds, so only the stalest N are refreshed per frame;
+    // the rest keep their (slightly older) impostor and are picked up next
+    // frame since needsImpostorUpdate() stays set.
+    static std::vector<LLVOAvatar*> candidates;
+    candidates.clear();
     for (LLCharacter* character : LLCharacter::sInstances)
     {
         LLVOAvatar* avatar = (LLVOAvatar*)character;
@@ -12237,10 +12290,28 @@ void LLVOAvatar::updateImpostors()
             && avatar->isImpostor()
             && avatar->needsImpostorUpdate())
         {
-            avatar->calcMutedAVColor();
-            gPipeline.generateImpostor(avatar);
+            candidates.push_back(avatar);
         }
     }
+
+    const size_t max_updates = (size_t)LLFrameBudget::getMaxImpostorUpdates();
+    if (candidates.size() > max_updates)
+    {
+        std::partial_sort(candidates.begin(), candidates.begin() + max_updates, candidates.end(),
+            [](const LLVOAvatar* a, const LLVOAvatar* b)
+            {
+                return a->mLastImpostorUpdateFrameTime < b->mLastImpostorUpdateFrameTime;
+            });
+        candidates.resize(max_updates);
+    }
+
+    for (LLVOAvatar* avatar : candidates)
+    {
+        avatar->calcMutedAVColor();
+        gPipeline.generateImpostor(avatar);
+    }
+    candidates.clear();
+    // </FS:Perf>
 
     LLCharacter::sAllowInstancesChange = true;
 }

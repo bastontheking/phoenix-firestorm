@@ -94,6 +94,7 @@
 #include "rlvlocks.h"
 // [/RLVa:KB]
 #include "llviewernetwork.h"
+#include "llframebudget.h" // <FS:Perf>
 
 const F32 FORCE_SIMPLE_RENDER_AREA = 512.f;
 const F32 FORCE_CULL_AREA = 8.f;
@@ -1787,6 +1788,13 @@ bool LLVOVolume::calcLOD()
     }
     else
     {
+        // <FS:Perf> Under frame-budget pressure, objects that are small on
+        // screen lose part of their LOD factor; large ones are untouched.
+        if (!isAttachment() && distance > 0.f)
+        {
+            lod_factor *= LLFrameBudget::getSmallObjectLODScale(lod_factor * radius / distance);
+        }
+        // </FS:Perf>
         cur_detail = computeLODDetail(ll_round(distance, 0.01f), ll_round(radius, 0.01f), lod_factor);
     }
 

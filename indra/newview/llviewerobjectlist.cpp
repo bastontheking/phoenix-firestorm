@@ -96,6 +96,7 @@
 
 #include "fsareasearch.h" // <FS:Cron> Added to provide the ability to update the impact costs in area search. </FS:Cron>
 #include "llavataractions.h"
+#include "llframebudget.h" // <FS:Perf>
 
 extern F32 gMinObjectDistance;
 extern bool gAnimateTextures;
@@ -1165,6 +1166,7 @@ void LLViewerObjectList::update(LLAgent &agent)
     if (! mWasPaused)
     {
         LLViewerStats::getInstance()->updateFrameStats(time_diff);
+        LLFrameBudget::update((F32)time_diff.value()); // <FS:Perf>
     }
 
     /*

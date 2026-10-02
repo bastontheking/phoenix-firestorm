@@ -220,6 +220,10 @@ extern LLTrace::SampleStatHandle<F64Milliseconds >  FRAMETIME_JITTER,
                                                     FRAMETIME_JITTER_95TH,
                                                     FRAMETIME_99TH,
                                                     FRAMETIME_95TH,
+                                                    FRAMETIME_999TH,            // <FS:Perf>
+                                                    FRAMETIME_1PCT_LOW,         // <FS:Perf> mean of the slowest 1% of frames
+                                                    FRAMETIME_01PCT_LOW,        // <FS:Perf> mean of the slowest 0.1% of frames
+                                                    FRAMETIME_MEDIAN,           // <FS:Perf>
                                                     FRAMETIME_JITTER_CUMULATIVE,
                                                     FRAMETIME_JITTER_STDDEV,
                                                     FRAMETIME_STDDEV;
@@ -229,6 +233,9 @@ extern LLTrace::SampleStatHandle<U32>               FRAMETIME_JITTER_EVENTS,
                                                     FRAMETIME_JITTER_EVENTS_LAST_MINUTE;
 
 extern LLTrace::SampleStatHandle<U64>               DOFRAME_TIME_US;
+
+// <FS:Perf> frame pacing: frames slower than 2x the period median
+extern LLTrace::SampleStatHandle<U32>               FRAMETIME_SPIKES;
 
 extern LLTrace::SampleStatHandle<F64> NOTRMALIZED_FRAMETIME_JITTER_SESSION;
 extern LLTrace::SampleStatHandle<F64> NFTV;
@@ -301,6 +308,21 @@ public:
     F64 getLastNormalizedFrametimeVariance() const { return mLastNormalizedFrametimeVariance; }
     F64 getLastNormalizedPeriodJitter() const { return mLastNormalizedPeriodJitter; }
 
+    // <FS:Perf> Frame pacing summary of the last completed sample period
+    struct FramePacing
+    {
+        F64 mMedianMs = 0.0;
+        F64 mP99Ms = 0.0;
+        F64 mP999Ms = 0.0;
+        F64 mOnePctLowFPS = 0.0;      // FPS equivalent of the mean of the slowest 1% of frames
+        F64 mPointOnePctLowFPS = 0.0; // same for the slowest 0.1%
+        F64 mAvgFPS = 0.0;
+        U32 mSpikes = 0;              // frames > 2x median
+        U32 mFrames = 0;
+    };
+    const FramePacing& getFramePacing() const { return mFramePacing; }
+    // </FS:Perf>
+
 private:
     LLTrace::Recording              mRecording;
 
@@ -321,6 +343,7 @@ private:
     F64 mLastNormalizedFrametimeVariance; // Used when submitting jitter stats
     F64 mLastNormalizedPeriodJitter;
 
+    FramePacing mFramePacing; // <FS:Perf>
 };
 
 static const F32 SEND_STATS_PERIOD = 300.0f;

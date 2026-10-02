@@ -458,6 +458,7 @@ set(viewer_SOURCE_FILES
     llfollowcam.cpp
     llfriendcard.cpp
     llflyoutcombobtn.cpp
+    llframebudget.cpp
     llgesturelistener.cpp
     llgesturemgr.cpp
     llgiveinventory.cpp
@@ -1334,6 +1335,7 @@ set(viewer_HEADER_FILES
     llfollowcam.h
     llfriendcard.h
     llflyoutcombobtn.h
+    llframebudget.h
     llgesturelistener.h
     llgesturemgr.h
     llgiveinventory.h
@@ -2120,7 +2122,7 @@ if (WINDOWS)
         )
 
     set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/viewerRes.rc
-      PROPERTIES COMPILE_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/res"
+      PROPERTIES INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/res" # <FS:Perf> quoted include, works with spaces in the source path
       )
 
     SOURCE_GROUP("Resource Files" FILES ${viewer_RESOURCE_FILES})

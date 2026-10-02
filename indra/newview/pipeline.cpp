@@ -27,6 +27,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "pipeline.h"
+#include "llframebudget.h" // <FS:Perf>
 
 // library includes
 #include "llimagepng.h"
@@ -226,6 +227,7 @@ F32 LLPipeline::CameraMaxCoF;
 F32 LLPipeline::CameraDoFResScale;
 LLVector3 LLPipeline::RenderVignette;
 F32 LLPipeline::RenderAutoHideSurfaceAreaLimit;
+U32 LLPipeline::sGeomUpdatesDeferred = 0; // <FS:Perf>
 bool LLPipeline::RenderScreenSpaceReflections;
 S32 LLPipeline::RenderScreenSpaceReflectionIterations;
 F32 LLPipeline::RenderScreenSpaceReflectionRayStep;
@@ -3015,6 +3017,23 @@ void LLPipeline::updateGeom(F32 max_dtime)
     // for now, only LLVOVolume does this to throttle LOD changes
     LLVOVolume::preUpdateGeom();
 
+    // <FS:Perf> max_dtime used to be ignored and the whole queue was drained
+    // every frame, which is the main source of hitches during LOD storms,
+    // region crossings and teleports. Now:
+    //  - drawables that matter right now (HUD, avatars and their attachments,
+    //    anything close to the camera) are always rebuilt this frame;
+    //  - everything else is rebuilt until the budget is spent, with a small
+    //    minimum per frame so the queue always drains.
+    // Deferred drawables stay on mBuildQ1 with IN_REBUILD_Q set and keep
+    // rendering their previous geometry until rebuilt.
+    static LLCachedControl<bool> budget_geom(gSavedSettings, "FSBudgetGeometryUpdates", true);
+    static LLCachedControl<F32> near_distance(gSavedSettings, "FSGeomUpdateNearDistance", 16.f);
+    constexpr U32 MIN_DEFERRABLE_PER_FRAME = 16;
+
+    const F32 budget = LLFrameBudget::getGeomUpdateBudget(max_dtime);
+    U32 deferrable_done = 0;
+    U32 deferred = 0;
+
     // Iterate through all drawables on the priority build queue,
     for (LLDrawable::drawable_list_t::iterator iter = mBuildQ1.begin();
          iter != mBuildQ1.end();)
@@ -3023,6 +3042,26 @@ void LLPipeline::updateGeom(F32 max_dtime)
         LLDrawable* drawablep = *curiter;
         if (drawablep && !drawablep->isDead())
         {
+            if (budget_geom)
+            {
+                LLViewerObject* vobj = drawablep->getVObj();
+                const bool critical = !vobj
+                    || vobj->isHUDAttachment()
+                    || vobj->isAvatar()
+                    || vobj->isAttachment()
+                    || drawablep->isState(LLDrawable::RIGGED)
+                    || drawablep->mDistanceWRTCamera < (F32)near_distance;
+                if (!critical)
+                {
+                    if (deferrable_done >= MIN_DEFERRABLE_PER_FRAME && update_timer.getElapsedTimeF32() > budget)
+                    {
+                        ++deferred;
+                        continue;
+                    }
+                    ++deferrable_done;
+                }
+            }
+
             if (drawablep->isUnload())
             {
                 drawablep->unload();
@@ -3040,6 +3079,8 @@ void LLPipeline::updateGeom(F32 max_dtime)
             mBuildQ1.erase(curiter);
         }
     }
+    sGeomUpdatesDeferred = deferred;
+    // </FS:Perf>
 
     updateMovedList(mMovedBridge);
 }

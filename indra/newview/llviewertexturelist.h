@@ -151,7 +151,14 @@ public:
     // - cleans up textures that haven't been referenced in awhile
     void updateImageDecodePriority(LLViewerFetchedTexture* imagep, bool flush_images = true);
 
+    // <FS:Perf> second half of updateImageDecodePriority, given a precomputed virtual size
+    void applyImageDecodePriority(LLViewerFetchedTexture* imagep, F32 max_vsize, bool on_screen, bool flush_images = true);
+
 private:
+    // <FS:Perf> thread-safe pieces of updateImageDecodePriority (see .cpp)
+    static void refreshFacePixelArea(LLFace* face);
+    static void computeImageVirtualSize(LLViewerFetchedTexture* imagep, bool update_faces, F32& out_max_vsize, bool& out_on_screen);
+
     F32  updateImagesCreateTextures(F32 max_time);
     F32  updateImagesFetchTextures(F32 max_time);
     void updateImagesUpdateStats();
@@ -234,6 +241,7 @@ public:
 
     // <FS:Ansariel> Fast cache stats
     static U32 sNumFastCacheReads;
+    static U32 sNumParallelFaceUpdates; // <FS:Perf> faces refreshed on the job system last update
 
 private:
     typedef std::map< LLTextureKey, LLPointer<LLViewerFetchedTexture> > uuid_map_t;

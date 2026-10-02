@@ -1156,6 +1156,7 @@ public:
     static F32 CameraDoFResScale;
     static LLVector3 RenderVignette; // <FS:Beq/> refresh of vignette support
     static F32 RenderAutoHideSurfaceAreaLimit;
+    static U32 sGeomUpdatesDeferred; // <FS:Perf> drawables left on mBuildQ1 by the budget last frame
     static bool RenderScreenSpaceReflections;
     static S32 RenderScreenSpaceReflectionIterations;
     static F32 RenderScreenSpaceReflectionRayStep;
