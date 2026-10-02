@@ -3479,8 +3479,22 @@ void LLMeshRepoThread::notifyLoadedMeshes()
             update_metrics = true;
 
             // Process the elements free of the lock
+            // <FS:Perf> Each notification can trigger volume and drawable
+            // rebuilds for every object waiting on the mesh. Spread large
+            // batches (teleport, region crossing) over several frames and
+            // put the remainder back at the front of the queue.
+            static LLCachedControl<F32> loaded_budget_ms(gSavedSettings, "FSMeshLoadedBudgetMs", 2.f);
+            const F32 budget = llmax((F32)loaded_budget_ms, 0.1f) * 0.001f;
+            constexpr size_t MIN_PER_FRAME = 4;
+            LLTimer notify_timer;
+            size_t processed = 0;
             for (const auto& mesh : loaded_queue)
             {
+                if (processed >= MIN_PER_FRAME && notify_timer.getElapsedTimeF32() > budget)
+                {
+                    break;
+                }
+                ++processed;
                 if (mesh.mVolume->getNumVolumeFaces() > 0)
                 {
                     gMeshRepo.notifyMeshLoaded(mesh.mMeshParams, mesh.mVolume, mesh.mLOD);
@@ -3490,6 +3504,14 @@ void LLMeshRepoThread::notifyLoadedMeshes()
                     gMeshRepo.notifyMeshUnavailable(mesh.mMeshParams, mesh.mLOD, LLVolumeLODGroup::getVolumeDetailFromScale(mesh.mVolume->getDetail()));
                 }
             }
+            if (processed < loaded_queue.size())
+            {
+                // Refcounts of these volumes are only ever touched on the
+                // main thread once they are in the queue, see lodReceived().
+                LLMutexLock lock(mLoadedMutex);
+                mLoadedQ.insert(mLoadedQ.begin(), loaded_queue.begin() + processed, loaded_queue.end());
+            }
+            // </FS:Perf>
         }
         else
         {
@@ -4981,7 +5003,11 @@ void LLMeshRepository::notifyMeshLoaded(const LLVolumeParams& mesh_params, LLVol
             LLVolume* sys_volume = LLPrimitive::getVolumeManager()->refVolume(mesh_params, detail);
             if (sys_volume)
             {
-                sys_volume->copyVolumeFaces(volume);
+                // <FS:Perf> volume is a temporary produced by the mesh thread
+                // (LLMeshRepoThread::lodReceived) and discarded right after
+                // this call, so move its faces instead of deep-copying them
+                // on the main thread.
+                sys_volume->takeVolumeFaces(volume);
                 sys_volume->setMeshAssetLoaded(true);
                 LLPrimitive::getVolumeManager()->unrefVolume(sys_volume);
             }

@@ -154,8 +154,19 @@ public:
     // <FS:Perf> second half of updateImageDecodePriority, given a precomputed virtual size
     void applyImageDecodePriority(LLViewerFetchedTexture* imagep, F32 max_vsize, bool on_screen, bool flush_images = true);
 
+    // <FS:Perf> updateImageDecodePriority(image, false) for every texture,
+    // with the face scan on the job system (low-memory emergency path)
+    void updateAllImageDecodePriorities();
+
 private:
     // <FS:Perf> thread-safe pieces of updateImageDecodePriority (see .cpp)
+    struct VSizeResult
+    {
+        F32  mMaxVSize = 0.f;
+        bool mOnScreen = false;
+        bool mValid = false;
+    };
+    static void computeVirtualSizesParallel(const std::vector<LLPointer<LLViewerFetchedTexture> >& entries, std::vector<VSizeResult>& results);
     static void refreshFacePixelArea(LLFace* face);
     static void computeImageVirtualSize(LLViewerFetchedTexture* imagep, bool update_faces, F32& out_max_vsize, bool& out_on_screen);
 

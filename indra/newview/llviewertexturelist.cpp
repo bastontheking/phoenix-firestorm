@@ -1306,6 +1306,104 @@ void LLViewerTextureList::forceImmediateUpdate(LLViewerFetchedTexture* imagep)
     return ;
 }
 
+// <FS:Perf>
+//static
+void LLViewerTextureList::computeVirtualSizesParallel(const std::vector<LLPointer<LLViewerFetchedTexture> >& entries, std::vector<VSizeResult>& results)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    static std::vector<LLFace*> faces_to_update;
+    faces_to_update.clear();
+
+    // Phase 1 (serial, cheap): pick the faces whose pixel area is stale. Each
+    // face is claimed once via mLastTextureUpdate, so phase 2 has exactly one
+    // writer per face. Rigged faces stay serial: their update writes rigging
+    // info into LLVolumeFaces that may be shared between objects.
+    {
+        LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vsize - gather faces");
+        for (const auto& entry : entries)
+        {
+            LLViewerFetchedTexture* imagep = entry.get();
+            if (imagep->getBoostLevel() >= LLViewerFetchedTexture::BOOST_HIGH)
+            {
+                continue;
+            }
+            U32 face_count = 0;
+            for (U32 ch = 0; ch < LLRender::NUM_TEXTURE_CHANNELS; ++ch)
+            {
+                face_count += imagep->getNumFaces(ch);
+                if (face_count > MAX_FACES_TO_CHECK)
+                {
+                    break;
+                }
+                const S32 nfaces = imagep->getNumFaces(ch);
+                for (S32 fi = 0; fi < nfaces; ++fi)
+                {
+                    LLFace* face = (*(imagep->getFaceList(ch)))[fi];
+                    if (face && face->getViewerObject() && (gFrameCount - face->mLastTextureUpdate) > 10)
+                    {
+                        face->mLastTextureUpdate = gFrameCount;
+                        if (face->isState(LLFace::RIGGED))
+                        {
+                            refreshFacePixelArea(face);
+                        }
+                        else
+                        {
+                            faces_to_update.push_back(face);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Phase 2 (parallel): LLFace::calcPixelArea for the claimed faces.
+    LL::JobSystem::parallelForEach(faces_to_update.size(), 64, [](size_t i)
+    {
+        refreshFacePixelArea(faces_to_update[i]);
+    });
+
+    // Phase 3 (parallel): read-only scan of each texture's faces -> max vsize.
+    results.clear();
+    results.resize(entries.size());
+    LL::JobSystem::parallelForEach(entries.size(), 8, [&](size_t i)
+    {
+        LLViewerFetchedTexture* imagep = entries[i].get();
+        VSizeResult& r = results[i];
+        if (imagep->getBoostLevel() < LLViewerFetchedTexture::BOOST_HIGH)
+        {
+            computeImageVirtualSize(imagep, false, r.mMaxVSize, r.mOnScreen);
+        }
+        r.mValid = true;
+    });
+
+    sNumParallelFaceUpdates = (U32)faces_to_update.size();
+}
+
+void LLViewerTextureList::updateAllImageDecodePriorities()
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    // Snapshot: applying priorities must not invalidate our iteration.
+    std::vector<LLPointer<LLViewerFetchedTexture> > images(mImageList.begin(), mImageList.end());
+
+    static LLCachedControl<bool> parallel_stats(gSavedSettings, "FSParallelTextureStats", true);
+    if (!parallel_stats || !LL::JobSystem::isRunning())
+    {
+        for (auto& image : images)
+        {
+            updateImageDecodePriority(image, false /*will modify gTextureList otherwise!*/);
+        }
+        return;
+    }
+
+    std::vector<VSizeResult> results;
+    computeVirtualSizesParallel(images, results);
+    for (size_t i = 0; i < images.size(); ++i)
+    {
+        applyImageDecodePriority(images[i], results[i].mMaxVSize, results[i].mOnScreen, false /*will modify gTextureList otherwise!*/);
+    }
+}
+// </FS:Perf>
+
 F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
@@ -1359,86 +1457,16 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
 
     LLTimer timer;
 
-    // <FS:Perf> Compute the virtual sizes of all entries up front, in parallel.
-    // Phase 1 (serial, cheap): pick the faces whose pixel area is stale. Each
-    //   face is claimed once via mLastTextureUpdate, so phase 2 has exactly one
-    //   writer per face. Rigged faces stay serial: their update writes rigging
-    //   info into LLVolumeFaces that may be shared between objects.
-    // Phase 2 (parallel): LLFace::calcPixelArea for the claimed faces.
-    // Phase 3 (parallel): read-only scan of each texture's faces -> max vsize.
-    // Phase 4 (serial, time-sliced): stats/fetch bookkeeping, as before.
+    // <FS:Perf> Compute the virtual sizes of all entries up front on the job
+    // system (see computeVirtualSizesParallel), then do the stats/fetch
+    // bookkeeping serially and time-sliced, as before.
     static LLCachedControl<bool> parallel_stats(gSavedSettings, "FSParallelTextureStats", true);
     const bool use_jobs = parallel_stats && LL::JobSystem::isRunning() && !entries.empty();
 
-    struct VSizeResult
-    {
-        F32  mMaxVSize = 0.f;
-        bool mOnScreen = false;
-        bool mValid = false;
-    };
     std::vector<VSizeResult> results;
-
     if (use_jobs)
     {
-        LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vtluift - parallel vsize");
-        static std::vector<LLFace*> faces_to_update;
-        faces_to_update.clear();
-
-        {
-            LL_PROFILE_ZONE_NAMED_CATEGORY_TEXTURE("vtluift - gather faces");
-            for (auto& imagep : entries)
-            {
-                if (imagep->getBoostLevel() >= LLViewerFetchedTexture::BOOST_HIGH)
-                {
-                    continue;
-                }
-                U32 face_count = 0;
-                for (U32 ch = 0; ch < LLRender::NUM_TEXTURE_CHANNELS; ++ch)
-                {
-                    face_count += imagep->getNumFaces(ch);
-                    if (face_count > MAX_FACES_TO_CHECK)
-                    {
-                        break;
-                    }
-                    const S32 nfaces = imagep->getNumFaces(ch);
-                    for (S32 fi = 0; fi < nfaces; ++fi)
-                    {
-                        LLFace* face = (*(imagep->getFaceList(ch)))[fi];
-                        if (face && face->getViewerObject() && (gFrameCount - face->mLastTextureUpdate) > 10)
-                        {
-                            face->mLastTextureUpdate = gFrameCount;
-                            if (face->isState(LLFace::RIGGED))
-                            {
-                                refreshFacePixelArea(face);
-                            }
-                            else
-                            {
-                                faces_to_update.push_back(face);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        LL::JobSystem::parallelForEach(faces_to_update.size(), 64, [](size_t i)
-        {
-            refreshFacePixelArea(faces_to_update[i]);
-        });
-
-        results.resize(entries.size());
-        LL::JobSystem::parallelForEach(entries.size(), 8, [&](size_t i)
-        {
-            LLViewerFetchedTexture* imagep = entries[i].get();
-            VSizeResult& r = results[i];
-            if (imagep->getBoostLevel() < LLViewerFetchedTexture::BOOST_HIGH)
-            {
-                computeImageVirtualSize(imagep, false, r.mMaxVSize, r.mOnScreen);
-            }
-            r.mValid = true;
-        });
-
-        sNumParallelFaceUpdates = (U32)faces_to_update.size();
+        computeVirtualSizesParallel(entries, results);
     }
     // </FS:Perf>
 

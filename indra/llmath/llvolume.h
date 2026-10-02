@@ -1107,6 +1107,7 @@ public:
     // NaCl End
 
     void copyVolumeFaces(const LLVolume* volume);
+    void takeVolumeFaces(LLVolume* volume); // <FS:Perf> move faces out of a throw-away volume
     void copyFacesTo(std::vector<LLVolumeFace> &faces) const;
     void copyFacesFrom(const std::vector<LLVolumeFace> &faces);
 

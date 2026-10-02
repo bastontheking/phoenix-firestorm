@@ -31,6 +31,9 @@
 
 #include "llimagegl.h"
 
+#include "lljobsystem.h" // <FS:Perf>
+#include <mutex>
+
 #include "llerror.h"
 #include "llfasttimer.h"
 #include "llimage.h"
@@ -2216,35 +2219,69 @@ void LLImageGL::analyzeAlpha(const void* data_in, U32 w, U32 h)
     {
         llassert(w % 2 == 0);
         llassert(h % 2 == 0);
-        const GLubyte* rowstart = ((const GLubyte*) data_in) + mAlphaOffset;
-        for (U32 y = 0; y < h; y += 2)
+        // <FS:Perf> This is a full pass over the image on the thread that
+        // uploads it (normally the main thread). Histograms are additive, so
+        // split the row pairs over the job system and merge the partial
+        // results; the outcome is identical to the serial loop.
+        const U32 stride = mAlphaStride;
+        const GLubyte* base = ((const GLubyte*) data_in) + mAlphaOffset;
+        auto histogram_rows = [base, w, stride](U32 pair_begin, U32 pair_end, U32* hist, U32& total)
         {
-            const GLubyte* current = rowstart;
-            for (U32 x = 0; x < w; x += 2)
+            const GLubyte* rowstart = base + (size_t)pair_begin * 2 * w * stride;
+            for (U32 pair = pair_begin; pair < pair_end; ++pair)
             {
-                const U32 s1 = current[0];
-                alphatotal += s1;
-                const U32 s2 = current[w * mAlphaStride];
-                alphatotal += s2;
-                current += mAlphaStride;
-                const U32 s3 = current[0];
-                alphatotal += s3;
-                const U32 s4 = current[w * mAlphaStride];
-                alphatotal += s4;
-                current += mAlphaStride;
+                const GLubyte* current = rowstart;
+                for (U32 x = 0; x < w; x += 2)
+                {
+                    const U32 s1 = current[0];
+                    total += s1;
+                    const U32 s2 = current[w * stride];
+                    total += s2;
+                    current += stride;
+                    const U32 s3 = current[0];
+                    total += s3;
+                    const U32 s4 = current[w * stride];
+                    total += s4;
+                    current += stride;
 
-                ++sample[s1/16];
-                ++sample[s2/16];
-                ++sample[s3/16];
-                ++sample[s4/16];
+                    ++hist[s1/16];
+                    ++hist[s2/16];
+                    ++hist[s3/16];
+                    ++hist[s4/16];
 
-                const U32 asum = (s1+s2+s3+s4);
-                alphatotal += asum;
-                sample[asum/(16*4)] += 4;
+                    const U32 asum = (s1+s2+s3+s4);
+                    total += asum;
+                    hist[asum/(16*4)] += 4;
+                }
+
+                rowstart += 2 * w * stride;
             }
+        };
 
-            rowstart += 2 * w * mAlphaStride;
+        const U32 pairs = h / 2;
+        constexpr U32 MIN_PIXELS_FOR_JOBS = 256 * 256;
+        if (length >= MIN_PIXELS_FOR_JOBS && LL::JobSystem::isRunning())
+        {
+            std::mutex merge_mutex;
+            const size_t grain = llmax((size_t)1, (size_t)(64 * 1024 / w)); // ~64k pixel pairs per chunk
+            LL::JobSystem::parallelFor(pairs, grain, [&](size_t begin, size_t end)
+            {
+                U32 local_hist[16] = { 0 };
+                U32 local_total = 0;
+                histogram_rows((U32)begin, (U32)end, local_hist, local_total);
+                std::lock_guard<std::mutex> lock(merge_mutex); // once per chunk
+                for (U32 i = 0; i < 16; ++i)
+                {
+                    sample[i] += local_hist[i];
+                }
+                alphatotal += local_total;
+            });
         }
+        else
+        {
+            histogram_rows(0, pairs, sample, alphatotal);
+        }
+        // </FS:Perf>
         length *= 2; // we sampled everything twice, essentially
     }
     else
@@ -2369,26 +2406,52 @@ void LLImageGL::updatePickMask(S32 width, S32 height, const U8* data_in)
     createPickMask(width, height);
 #endif // SHOW_ASSERT
 
-    U32 pick_bit = 0;
-
-    for (S32 y = 0; y < height; y += 2)
+    // <FS:Perf> One bit per 2x2 block, rows of blocks are contiguous in the
+    // bit stream. Chunks span a multiple of 8 block rows so that no two
+    // chunks ever write to the same byte; the result is identical to the
+    // serial loop.
+    const S32 blocks_per_row = (width + 1) / 2;
+    const S32 block_rows = (height + 1) / 2;
+    U8* pick_mask = mPickMask;
+    auto fill_rows = [=](S32 row_begin, S32 row_end)
     {
-        for (S32 x = 0; x < width; x += 2)
+        for (S32 row = row_begin; row < row_end; ++row)
         {
-            U8 alpha = data_in[(y*width+x)*4+3];
-
-            if (alpha > 32)
+            const S32 y = row * 2;
+            U32 pick_bit = (U32)(row * blocks_per_row);
+            for (S32 x = 0; x < width; x += 2)
             {
-                U32 pick_idx = pick_bit/8;
-                U32 pick_offset = pick_bit%8;
-                llassert(pick_idx < pickSize);
+                U8 alpha = data_in[(y*width+x)*4+3];
 
-                mPickMask[pick_idx] |= 1 << pick_offset;
+                if (alpha > 32)
+                {
+                    U32 pick_idx = pick_bit/8;
+                    U32 pick_offset = pick_bit%8;
+                    llassert(pick_idx < pickSize);
+
+                    pick_mask[pick_idx] |= 1 << pick_offset;
+                }
+
+                ++pick_bit;
             }
-
-            ++pick_bit;
         }
+    };
+
+    constexpr S32 MIN_PIXELS_FOR_JOBS = 256 * 256;
+    if (width * height >= MIN_PIXELS_FOR_JOBS && LL::JobSystem::isRunning())
+    {
+        constexpr S32 ROWS_PER_GROUP = 8; // 8 block rows -> 8*blocks_per_row bits, a whole number of bytes
+        const S32 groups = (block_rows + ROWS_PER_GROUP - 1) / ROWS_PER_GROUP;
+        LL::JobSystem::parallelFor(groups, 4, [&](size_t begin, size_t end)
+        {
+            fill_rows((S32)begin * ROWS_PER_GROUP, llmin((S32)end * ROWS_PER_GROUP, block_rows));
+        });
     }
+    else
+    {
+        fill_rows(0, block_rows);
+    }
+    // </FS:Perf>
 }
 
 //bool LLImageGL::getMask(const LLVector2 &tc)

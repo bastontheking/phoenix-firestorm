@@ -28,6 +28,7 @@
 
 #include "llappviewer.h"
 #include "lljobsystem.h" // <FS:Perf>
+#include <thread> // <FS:Perf>
 
 // Viewer includes
 #include "llversioninfo.h"
@@ -1916,13 +1917,37 @@ bool LLAppViewer::doFrame()
             {
                 // Sleep a while to limit frame rate.
                 LLPerfStats::RecordSceneTime T ( LLPerfStats::StatType_t::RENDER_FPSLIMIT );
-                F32 min_frame_time = 1.f / (F32)max_fps;
-                S32 milliseconds_to_sleep = llclamp((S32)((min_frame_time - frameTimer.getElapsedTimeF64()) * 1000.f), 0, 1000);
-                if (milliseconds_to_sleep > 0)
+                // <FS:Perf> Deadline-based pacing. The previous version
+                // truncated the wait to whole milliseconds and restarted the
+                // timer after sleeping, so frame times wobbled by up to ~1 ms
+                // and the effective rate drifted. Now frames are scheduled on
+                // a fixed cadence: coarse sleep until shortly before the
+                // deadline, then yield until it is reached.
+                const F64 min_frame_time = 1.0 / (F64)max_fps;
+                static F64 next_deadline = 0.0;
+                const F64 now = LLTimer::getTotalSeconds();
+                if (next_deadline <= 0.0 || now - next_deadline > min_frame_time)
+                {
+                    // first frame, or we fell more than a frame behind: resync
+                    next_deadline = now;
+                }
+                next_deadline += min_frame_time;
+
+                constexpr F64 SPIN_WINDOW = 0.0015; // OS sleep granularity margin
+                F64 remaining = next_deadline - LLTimer::getTotalSeconds();
+                if (remaining > SPIN_WINDOW)
                 {
                     LL_PROFILE_ZONE_NAMED_CATEGORY_APP("sleep2");
-                    ms_sleep(milliseconds_to_sleep);
+                    ms_sleep((U32)((remaining - SPIN_WINDOW) * 1000.0));
                 }
+                {
+                    LL_PROFILE_ZONE_NAMED_CATEGORY_APP("sleep2 spin");
+                    while (LLTimer::getTotalSeconds() < next_deadline)
+                    {
+                        std::this_thread::yield();
+                    }
+                }
+                // </FS:Perf>
             }
             frameTimer.reset();
             // </FS:Ansariel>

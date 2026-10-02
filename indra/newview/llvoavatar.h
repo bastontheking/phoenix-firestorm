@@ -959,6 +959,10 @@ public:
         // Float array ready to be sent to GL
         std::vector<F32> mGLMp;
 
+        // <FS:Perf> skin this entry was built from, so the palette can be
+        // rebuilt ahead of rendering (see updateMatrixPalettesParallel)
+        LLConstPointer<LLMeshSkinInfo> mSkin;
+
         MatrixPaletteCache() :
             mFrame(gFrameCount - 1)
         {
@@ -969,6 +973,14 @@ public:
     // Will do a map lookup for the entry associated with the given MeshSkinInfo
     // Will update said entry if it hasn't been updated yet this frame
     const MatrixPaletteCache& updateSkinInfoMatrixPalette(const LLMeshSkinInfo* skinInfo);
+
+    // <FS:Perf> Rebuild, on the job system, the palettes every visible
+    // avatar used last frame, so the draw loops find them already cached.
+    static void updateMatrixPalettesParallel();
+private:
+    void buildMatrixPalette(MatrixPaletteCache& entry, const LLMeshSkinInfo* skin);
+    void rebuildRecentMatrixPalettes();
+public:
 
     // Map of LLMeshSkinInfo::mHash to MatrixPaletteCache
     typedef std::unordered_map<U64, MatrixPaletteCache> matrix_palette_cache_t;

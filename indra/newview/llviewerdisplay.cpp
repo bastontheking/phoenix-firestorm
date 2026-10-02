@@ -911,6 +911,12 @@ void display(bool rebuild, F32 zoom_factor, int subfield, bool for_snapshot)
         static LLCullResult result;
         LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
         LLPipeline::sUnderWaterRender = LLViewerCamera::getInstance()->cameraUnderWater();
+
+        // <FS:Perf> All animation for this frame is done (idle); build the
+        // skinning palettes in parallel now instead of lazily, one by one,
+        // inside the shadow and main draw loops.
+        LLVOAvatar::updateMatrixPalettesParallel();
+
         gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
         stop_glerror();
 

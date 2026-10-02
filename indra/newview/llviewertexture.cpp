@@ -565,10 +565,7 @@ void LLViewerTexture::updateClass()
         if (is_sys_low || over_pct > 2.f)
         { // if we're low on system memory, emergency purge off screen textures to avoid a death spiral
             LL_WARNS() << "Low system memory detected, emergency downrezzing off screen textures" << LL_ENDL;
-            for (auto& image : gTextureList)
-            {
-                gTextureList.updateImageDecodePriority(image, false /*will modify gTextureList otherwise!*/);
-            }
+            gTextureList.updateAllImageDecodePriorities(); // <FS:Perf> parallel face scan
         }
     }
 

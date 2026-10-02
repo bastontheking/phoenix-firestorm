@@ -28,6 +28,7 @@
 
 #include "llvoavatar.h"
 #include "llframebudget.h" // <FS:Perf>
+#include "lljobsystem.h" // <FS:Perf>
 
 #include <stdio.h>
 #include <ctype.h>
@@ -11355,46 +11356,116 @@ const LLVOAvatar::MatrixPaletteCache& LLVOAvatar::updateSkinInfoMatrixPalette(co
 
     if (entry.mFrame != gFrameCount)
     {
-        LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
-
-        entry.mFrame = gFrameCount;
-
-        //build matrix palette
-        U32 count = LLSkinningUtil::getMeshJointCount(skin);
-        entry.mMatrixPalette.resize(count);
-        LLSkinningUtil::initSkinningMatrixPalette(&(entry.mMatrixPalette[0]), count, skin, this);
-
-        const LLMatrix4a* mat = &(entry.mMatrixPalette[0]);
-
-        entry.mGLMp.resize(count * 12);
-
-        F32* mp = &(entry.mGLMp[0]);
-
-        for (U32 i = 0; i < count; ++i)
+        if (entry.mSkin.get() != skin)
         {
-            F32* m = (F32*)mat[i].mMatrix[0].getF32ptr();
-
-            U32 idx = i * 12;
-
-            mp[idx + 0] = m[0];
-            mp[idx + 1] = m[1];
-            mp[idx + 2] = m[2];
-            mp[idx + 3] = m[12];
-
-            mp[idx + 4] = m[4];
-            mp[idx + 5] = m[5];
-            mp[idx + 6] = m[6];
-            mp[idx + 7] = m[13];
-
-            mp[idx + 8] = m[8];
-            mp[idx + 9] = m[9];
-            mp[idx + 10] = m[10];
-            mp[idx + 11] = m[14];
+            entry.mSkin = skin; // <FS:Perf>
         }
+        buildMatrixPalette(entry, skin);
     }
 
     return entry;
 }
+
+void LLVOAvatar::buildMatrixPalette(MatrixPaletteCache& entry, const LLMeshSkinInfo* skin)
+{
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+
+    entry.mFrame = gFrameCount;
+
+    //build matrix palette
+    U32 count = LLSkinningUtil::getMeshJointCount(skin);
+    entry.mMatrixPalette.resize(count);
+    LLSkinningUtil::initSkinningMatrixPalette(&(entry.mMatrixPalette[0]), count, skin, this);
+
+    const LLMatrix4a* mat = &(entry.mMatrixPalette[0]);
+
+    entry.mGLMp.resize(count * 12);
+
+    F32* mp = &(entry.mGLMp[0]);
+
+    for (U32 i = 0; i < count; ++i)
+    {
+        F32* m = (F32*)mat[i].mMatrix[0].getF32ptr();
+
+        U32 idx = i * 12;
+
+        mp[idx + 0] = m[0];
+        mp[idx + 1] = m[1];
+        mp[idx + 2] = m[2];
+        mp[idx + 3] = m[12];
+
+        mp[idx + 4] = m[4];
+        mp[idx + 5] = m[5];
+        mp[idx + 6] = m[6];
+        mp[idx + 7] = m[13];
+
+        mp[idx + 8] = m[8];
+        mp[idx + 9] = m[9];
+        mp[idx + 10] = m[10];
+        mp[idx + 11] = m[14];
+    }
+}
+
+// <FS:Perf>
+// Ownership model: one job per avatar. A job only touches its own avatar's
+// joints (lazy world matrix updates) and its own mMatrixPaletteCache
+// entries. The only state shared between avatars is LLMeshSkinInfo, whose
+// lazily initialised joint numbers are resolved serially before the jobs run.
+void LLVOAvatar::rebuildRecentMatrixPalettes()
+{
+    const U32 last_frame = gFrameCount - 1;
+    for (auto& [hash, entry] : mMatrixPaletteCache)
+    {
+        if (entry.mFrame == last_frame && entry.mSkin.notNull())
+        {
+            buildMatrixPalette(entry, entry.mSkin.get());
+        }
+    }
+}
+
+//static
+void LLVOAvatar::updateMatrixPalettesParallel()
+{
+    static LLCachedControl<bool> enabled(gSavedSettings, "FSParallelSkinningPalettes", true);
+    if (!enabled || !LL::JobSystem::isRunning())
+    {
+        return;
+    }
+    LL_PROFILE_ZONE_SCOPED_CATEGORY_AVATAR;
+
+    static std::vector<LLVOAvatar*> avatars;
+    avatars.clear();
+    const U32 last_frame = gFrameCount - 1;
+    for (LLCharacter* character : LLCharacter::sInstances)
+    {
+        LLVOAvatar* avatar = (LLVOAvatar*)character;
+        if (avatar->isDead() || !avatar->isVisible() || avatar->mMatrixPaletteCache.empty())
+        {
+            continue;
+        }
+        bool any = false;
+        for (auto& [hash, entry] : avatar->mMatrixPaletteCache)
+        {
+            if (entry.mFrame == last_frame && entry.mSkin.notNull())
+            {
+                // serial: mutates the (shared) skin info once
+                LLSkinningUtil::initJointNums(const_cast<LLMeshSkinInfo*>(entry.mSkin.get()), avatar);
+                any = true;
+            }
+        }
+        if (any)
+        {
+            avatars.push_back(avatar);
+        }
+    }
+
+    LL::JobSystem::parallelForEach(avatars.size(), 1, [](size_t i)
+    {
+        avatars[i]->rebuildRecentMatrixPalettes();
+    });
+    avatars.clear();
+}
+// </FS:Perf>
 
 // static
 void LLVOAvatar::getAnimLabels( std::vector<std::string>* labels )

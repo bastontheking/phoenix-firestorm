@@ -2776,6 +2776,16 @@ void LLVolume::copyVolumeFaces(const LLVolume* volume)
     mSculptLevel = 0;
 }
 
+// <FS:Perf> Same result as copyVolumeFaces() for the receiver, without
+// deep-copying every vertex buffer. The donor is left with the receiver's
+// previous faces and must be considered garbage afterwards.
+void LLVolume::takeVolumeFaces(LLVolume* volume)
+{
+    mVolumeFaces.swap(volume->mVolumeFaces);
+    mSculptLevel = 0;
+}
+// </FS:Perf>
+
 bool LLVolume::cacheOptimize(bool gen_tangents)
 {
     for (S32 i = 0; i < mVolumeFaces.size(); ++i)
