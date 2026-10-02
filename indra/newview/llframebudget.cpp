@@ -129,7 +129,12 @@ U32 LLFrameBudget::getAvatarAnimPeriod(F32 screen_fraction)
 // static
 F32 LLFrameBudget::getSmallObjectLODScale(F32 projected_tan)
 {
-    if (sPressure <= 0.f)
+    // Every LOD switch costs a geometry rebuild, so a continuously varying
+    // scale would make objects near a threshold flip back and forth. Use
+    // three discrete steps instead; the step only changes when pressure has
+    // moved by a third of its range.
+    const F32 pressure = floorf(sPressure * 3.f) / 3.f;
+    if (pressure <= 0.f)
     {
         return 1.f;
     }
@@ -143,6 +148,6 @@ F32 LLFrameBudget::getSmallObjectLODScale(F32 projected_tan)
         return 1.f;
     }
     const F32 t = llclamp((projected_tan - SMALL) / (LARGE - SMALL), 0.f, 1.f);
-    const F32 max_reduction = 0.35f * sPressure;
+    const F32 max_reduction = 0.35f * pressure;
     return 1.f - max_reduction * (1.f - t);
 }

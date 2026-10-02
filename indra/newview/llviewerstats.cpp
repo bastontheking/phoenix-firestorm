@@ -425,6 +425,17 @@ void LLViewerStats::updateFrameStats(const F64Seconds time_diff)
                 mFramePacing.mPointOnePctLowFPS = low01.value() > 0.0 ? 1.0 / low01.value() : 0.0;
                 mFramePacing.mAvgFPS = total > 0.0 ? n / total : 0.0;
                 mFramePacing.mSpikes = spikes;
+
+                // Machine-readable line for before/after comparisons:
+                // grep FramePacing in the viewer log.
+                static LLCachedControl<bool> log_pacing(gSavedSettings, "FSLogFramePacing", false);
+                if (log_pacing)
+                {
+                    LL_INFOS("FramePacing") << llformat("frames=%u avg_fps=%.2f median_ms=%.3f p95_ms=%.3f p99_ms=%.3f p999_ms=%.3f low1_fps=%.2f low01_fps=%.2f spikes=%u",
+                        mFramePacing.mFrames, mFramePacing.mAvgFPS, mFramePacing.mMedianMs,
+                        ninety_fifth_percentile.value() * 1000.0, mFramePacing.mP99Ms, mFramePacing.mP999Ms,
+                        mFramePacing.mOnePctLowFPS, mFramePacing.mPointOnePctLowFPS, mFramePacing.mSpikes) << LL_ENDL;
+                }
             }
             // </FS:Perf>
 

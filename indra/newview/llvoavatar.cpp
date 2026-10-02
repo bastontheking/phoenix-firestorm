@@ -5855,10 +5855,12 @@ bool LLVOAvatar::updateCharacter(LLAgent &agent)
     }
     else if (skipAnimationThisFrame()) // <FS:Perf> animation LOD for avatars small on screen
     {
-        // Keep motion bookkeeping (activation/expiry) running, but hold the
-        // pose. Root position and joint world matrices are still updated
-        // below, so the avatar keeps moving smoothly with its object.
-        updateMotions(LLCharacter::HIDDEN_UPDATE);
+        // Hold the pose: do not touch the motion controller at all. Its
+        // timer keeps running, so the next full update receives the whole
+        // elapsed time and animations keep their real speed (a HIDDEN_UPDATE
+        // here would reset the timer and slow animations down). Root
+        // position and joint world matrices are still updated below, so the
+        // avatar keeps moving smoothly with its object.
     }
     else
     {
