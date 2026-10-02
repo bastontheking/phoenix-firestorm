@@ -3045,7 +3045,12 @@ void LLPipeline::updateGeom(F32 max_dtime)
             if (budget_geom)
             {
                 LLViewerObject* vobj = drawablep->getVObj();
+                LLVOVolume* volp = drawablep->getVOVolume();
+                // A volume whose (shared) geometry changed -- mesh LOD arrived,
+                // sculpt, volume params -- can not wait: its spatial group may
+                // be rebuilt with the new volume faces but the old face counts.
                 const bool critical = !vobj
+                    || (volp && (volp->getVolumeChanged() || volp->getSculptChanged()))
                     || vobj->isHUDAttachment()
                     || vobj->isAvatar()
                     || vobj->isAttachment()

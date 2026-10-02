@@ -286,6 +286,7 @@ public:
     virtual bool    computeNeedsUpdate();
     bool            skipAnimationThisFrame(); // <FS:Perf> animation LOD
     U32             mAnimUpdatePeriod = 1;    // <FS:Perf> last animation period (frames), for debug display
+    U32             mAnimUpdateCounter = 0;   // <FS:Perf> animation LOD stagger
     virtual bool    updateCharacter(LLAgent &agent);
     void            updateFootstepSounds();
     void            computeUpdatePeriod();

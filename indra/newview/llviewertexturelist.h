@@ -168,6 +168,10 @@ private:
     };
     static void computeVirtualSizesParallel(const std::vector<LLPointer<LLViewerFetchedTexture> >& entries, std::vector<VSizeResult>& results);
     static void refreshFacePixelArea(LLFace* face);
+    static void readVirtualSizeSettings();
+    static F32 sVSizeScaleMin;
+    static F32 sVSizeScaleMax;
+    static F32 sVSizeCameraBoost;
     static void computeImageVirtualSize(LLViewerFetchedTexture* imagep, bool update_faces, F32& out_max_vsize, bool& out_on_screen);
 
     F32  updateImagesCreateTextures(F32 max_time);

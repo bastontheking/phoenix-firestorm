@@ -5679,6 +5679,13 @@ bool LLVOAvatar::skipAnimationThisFrame()
     {
         return false;
     }
+    // Impostored avatars are already throttled by mUpdatePeriod; combining
+    // both frame-count tests would alias (the periods divide each other) and
+    // could skip every single update.
+    if (mUpdatePeriod > 1 || isImpostor())
+    {
+        return false;
+    }
 
     const F32 distance = mDrawable->mDistanceWRTCamera;
     const F32 height = llmax(mBodySize.mV[VZ], 0.5f);
@@ -5696,7 +5703,9 @@ bool LLVOAvatar::skipAnimationThisFrame()
     {
         return false;
     }
-    return ((LLDrawable::getCurrentFrame() + mID.mData[1]) % mAnimUpdatePeriod) != 0;
+    // Stagger on this avatar's own update counter rather than the global
+    // frame number, so the cadence is exact regardless of other throttles.
+    return ((mAnimUpdateCounter++ + mID.mData[1]) % mAnimUpdatePeriod) != 0;
 }
 // </FS:Perf>
 

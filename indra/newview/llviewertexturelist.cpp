@@ -937,6 +937,21 @@ namespace
     constexpr U32 MAX_FACES_TO_CHECK = 1024;
 }
 
+F32 LLViewerTextureList::sVSizeScaleMin = 0.0095f;
+F32 LLViewerTextureList::sVSizeScaleMax = 25.f;
+F32 LLViewerTextureList::sVSizeCameraBoost = 8.f;
+
+//static
+void LLViewerTextureList::readVirtualSizeSettings()
+{
+    static LLCachedControl<F32> texture_scale_min(gSavedSettings, "TextureScaleMinAreaFactor", 0.0095f);
+    static LLCachedControl<F32> texture_scale_max(gSavedSettings, "TextureScaleMaxAreaFactor", 25.f);
+    static LLCachedControl<F32> texture_camera_boost(gSavedSettings, "TextureCameraBoost", 8.f);
+    sVSizeScaleMin = texture_scale_min;
+    sVSizeScaleMax = texture_scale_max;
+    sVSizeCameraBoost = texture_camera_boost;
+}
+
 //static
 void LLViewerTextureList::refreshFacePixelArea(LLFace* face)
 {
@@ -948,9 +963,11 @@ void LLViewerTextureList::refreshFacePixelArea(LLFace* face)
 //static
 void LLViewerTextureList::computeImageVirtualSize(LLViewerFetchedTexture* imagep, bool update_faces, F32& out_max_vsize, bool& out_on_screen)
 {
-    static LLCachedControl<F32> texture_scale_min(gSavedSettings, "TextureScaleMinAreaFactor", 0.0095f);
-    static LLCachedControl<F32> texture_scale_max(gSavedSettings, "TextureScaleMaxAreaFactor", 25.f);
-    static LLCachedControl<F32> texture_camera_boost(gSavedSettings, "TextureCameraBoost", 8.f);
+    // Read once per frame on the main thread (see readVirtualSizeSettings);
+    // this function also runs on job system workers.
+    const F32 texture_scale_min = sVSizeScaleMin;
+    const F32 texture_scale_max = sVSizeScaleMax;
+    const F32 texture_camera_boost = sVSizeCameraBoost;
 
     F32 max_vsize = 0.f;
     bool on_screen = false;
@@ -1001,7 +1018,7 @@ void LLViewerTextureList::computeImageVirtualSize(LLViewerFetchedTexture* imagep
                 LLViewerObject* objp = face->getViewerObject();
                 const LLTextureEntry* te = (te_offset < 0 || te_offset >= objp->getNumTEs()) ? nullptr : objp->getTE(te_offset);
                 F32 min_scale = te ? llmin(fabsf(te->getScaleS()), fabsf(te->getScaleT())) : 1.f;
-                min_scale = llclamp(min_scale * min_scale, texture_scale_min(), texture_scale_max());
+                min_scale = llclamp(min_scale * min_scale, texture_scale_min, texture_scale_max);
                 vsize /= min_scale;
 
                 // apply bias to offscreen faces all the time, but only to onscreen faces when bias is large
@@ -1049,6 +1066,7 @@ void LLViewerTextureList::computeImageVirtualSize(LLViewerFetchedTexture* imagep
 
 void LLViewerTextureList::updateImageDecodePriority(LLViewerFetchedTexture* imagep, bool flush_images)
 {
+    readVirtualSizeSettings();
     F32 max_vsize = 0.f;
     bool on_screen = false;
     if (imagep->getBoostLevel() < LLViewerFetchedTexture::BOOST_HIGH)  // don't bother checking face list for boosted textures
@@ -1311,6 +1329,7 @@ void LLViewerTextureList::forceImmediateUpdate(LLViewerFetchedTexture* imagep)
 void LLViewerTextureList::computeVirtualSizesParallel(const std::vector<LLPointer<LLViewerFetchedTexture> >& entries, std::vector<VSizeResult>& results)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
+    readVirtualSizeSettings();
     static std::vector<LLFace*> faces_to_update;
     faces_to_update.clear();
 

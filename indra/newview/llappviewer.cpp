@@ -1926,12 +1926,9 @@ bool LLAppViewer::doFrame()
                 const F64 min_frame_time = 1.0 / (F64)max_fps;
                 static F64 next_deadline = 0.0;
                 const F64 now = LLTimer::getTotalSeconds();
-                if (next_deadline <= 0.0 || now - next_deadline > min_frame_time)
-                {
-                    // first frame, or we fell more than a frame behind: resync
-                    next_deadline = now;
-                }
-                next_deadline += min_frame_time;
+                // Schedule from the later of the previous deadline and now, so
+                // a late frame never makes the following frame shorter.
+                next_deadline = llmax(next_deadline, now) + min_frame_time;
 
                 constexpr F64 SPIN_WINDOW = 0.0015; // OS sleep granularity margin
                 F64 remaining = next_deadline - LLTimer::getTotalSeconds();

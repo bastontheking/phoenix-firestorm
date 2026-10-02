@@ -26,9 +26,12 @@
 #include "lljobsystem.h"
 
 #include "llprofiler.h"
+#include "llrand.h"
 #include "llthread.h"
 
 #include <chrono>
+#include <condition_variable>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -81,12 +84,56 @@ struct JobState
     std::atomic<uint64_t> mClaim{ 0 };
     std::atomic<uint32_t> mDone{ 0 };
     std::atomic<uint32_t> mWake{ 0 };       // bumped to wake sleeping workers
+#if defined(__APPLE__)
+    // std::atomic::wait/notify are unavailable on older macOS deployment
+    // targets; use a condition variable for the (rare) sleeping path.
+    std::mutex mWakeMutex;
+    std::condition_variable mWakeCondition;
+#endif
+
+    void waitForWake(uint32_t seen)
+    {
+#if defined(__APPLE__)
+        std::unique_lock<std::mutex> lock(mWakeMutex);
+        mWakeCondition.wait(lock, [&]() { return mWake.load(std::memory_order_acquire) != seen; });
+#else
+        mWake.wait(seen, std::memory_order_acquire);
+#endif
+    }
+
+    // Call after bumping mWake.
+    void notifyWake()
+    {
+#if defined(__APPLE__)
+        { std::lock_guard<std::mutex> lock(mWakeMutex); } // pairs with the predicate check
+        mWakeCondition.notify_all();
+#else
+        mWake.notify_all();
+#endif
+    }
     std::atomic<bool>     mStop{ false };
     std::atomic_flag      mInUse = ATOMIC_FLAG_INIT;
     uint64_t              mGeneration = 0;  // owned by the submitter holding mInUse
 
     std::vector<std::thread> mThreads;
     std::atomic<bool> mRunning{ false };
+
+    // If the application exits without calling JobSystem::shutdown() (e.g.
+    // init failed after startup), destroying joinable threads would call
+    // std::terminate. Stop and join them here instead.
+    ~JobState()
+    {
+        mStop = true;
+        mWake.fetch_add(1, std::memory_order_release);
+        notifyWake();
+        for (auto& t : mThreads)
+        {
+            if (t.joinable())
+            {
+                t.join();
+            }
+        }
+    }
 
     std::atomic<uint64_t> mBatches{ 0 };
     std::atomic<uint64_t> mSerial{ 0 };
@@ -150,6 +197,9 @@ void workerMain(size_t index)
     LLThread::registerThreadID();
     const std::string name = "JobWorker" + std::to_string(index);
     LL_PROFILER_SET_THREAD_NAME(name.c_str());
+    // Seed this thread's random generator now (job bodies may call
+    // ll_frand), so the one-time seeding cost never lands inside a frame.
+    (void)ll_frand();
 
     JobState& s = state();
     uint32_t seen_wake = s.mWake.load(std::memory_order_acquire);
@@ -165,7 +215,7 @@ void workerMain(size_t index)
             }
             LL_JOB_PAUSE();
         }
-        s.mWake.wait(seen_wake, std::memory_order_acquire);
+        s.waitForWake(seen_wake);
         if (s.mStop.load(std::memory_order_acquire))
         {
             break;
@@ -227,7 +277,7 @@ void JobSystem::shutdown()
     }
     s.mStop = true;
     s.mWake.fetch_add(1, std::memory_order_release);
-    s.mWake.notify_all();
+    s.notifyWake();
     for (auto& t : s.mThreads)
     {
         if (t.joinable())
@@ -258,9 +308,10 @@ void JobSystem::parallelFor(size_t count, size_t min_grain, const range_fn_t& fn
 
     JobState& s = state();
     min_grain = llmax(min_grain, (size_t)1);
-    const size_t workers = s.mThreads.size();
+    const bool running = s.mRunning.load(std::memory_order_acquire);
+    const size_t workers = running ? s.mThreads.size() : 0;
 
-    if (!s.mRunning.load(std::memory_order_relaxed) || workers == 0 || count <= min_grain)
+    if (!running || workers == 0 || count <= min_grain)
     {
         s.mSerial.fetch_add(1, std::memory_order_relaxed);
         fn(0, count);
@@ -293,7 +344,7 @@ void JobSystem::parallelFor(size_t count, size_t min_grain, const range_fn_t& fn
     s.mClaim.store(packClaim(gen, chunks, 0), std::memory_order_release);
 
     s.mWake.fetch_add(1, std::memory_order_release);
-    s.mWake.notify_all();
+    s.notifyWake();
 
     // The caller works too.
     runChunks(s, gen, false);

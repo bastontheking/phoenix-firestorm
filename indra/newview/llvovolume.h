@@ -180,6 +180,7 @@ public:
 
 
                 bool    getVolumeChanged() const                { return mVolumeChanged; }
+                bool    getSculptChanged() const                { return mSculptChanged; } // <FS:Perf>
 
     F32 getVObjRadius() const override              { return mVObjRadius; };
                 const LLMatrix4& getWorldMatrix(LLXformMatrix* xform) const override;
