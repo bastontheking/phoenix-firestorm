@@ -26961,6 +26961,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <real>2.0</real>
     </map>
+    <key>FSShowPerfStats</key>
+    <map>
+      <key>Comment</key>
+      <string>Show the performance overlay: frame pacing (median, p99, p99.9, 1%/0.1% lows, spikes), frame-budget pressure, job system utilisation, deferred geometry rebuilds and avatar animation LOD</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
     <key>FSImageDecodeThreads</key>
     <map>
       <key>Comment</key>

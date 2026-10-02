@@ -4094,6 +4094,16 @@
                  function="ToggleControl"
                  parameter="DebugShowTime" />
             </menu_item_check>
+            <menu_item_check
+             label="Show Performance Stats"
+             name="Show Performance Stats">
+                <menu_item_check.on_check
+                 function="CheckControl"
+                 parameter="FSShowPerfStats" />
+                <menu_item_check.on_click
+                 function="ToggleControl"
+                 parameter="FSShowPerfStats" />
+            </menu_item_check>
           <menu_item_check
              label="Show Upload Transaction"
              name="Show Upload Transaction">

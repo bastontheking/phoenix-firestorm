@@ -26,6 +26,8 @@
 
 #include "llviewerprecompiledheaders.h"
 #include "llviewerwindow.h"
+#include "llframebudget.h" // <FS:Perf>
+#include "lljobsystem.h" // <FS:Perf>
 
 
 // system library includes
@@ -533,6 +535,57 @@ public:
             S32 secs = (S32)((time - hours*(60*60) - mins*60));
             addText(xpos, ypos, llformat("Time: %d:%02d:%02d", hours,mins,secs)); ypos += y_inc;
         }
+
+        // <FS:Perf> Performance instrumentation overlay
+        static LLCachedControl<bool> show_perf_stats(gSavedSettings, "FSShowPerfStats", false);
+        if (show_perf_stats())
+        {
+            const S32 y_inc2 = 15;
+            const LLViewerStats::FramePacing& fp = LLViewerStats::instance().getFramePacing();
+            addText(xpos, ypos, llformat("Frame pacing (%u frames): avg %.1f FPS | median %.2f ms | p99 %.2f ms | p99.9 %.2f ms",
+                fp.mFrames, fp.mAvgFPS, fp.mMedianMs, fp.mP99Ms, fp.mP999Ms)); ypos += y_inc2;
+            addText(xpos, ypos, llformat("1%% low %.1f FPS | 0.1%% low %.1f FPS | spikes (>2x median) %u",
+                fp.mOnePctLowFPS, fp.mPointOnePctLowFPS, fp.mSpikes)); ypos += y_inc2;
+            addText(xpos, ypos, llformat("Frame budget: target %.2f ms | smoothed %.2f ms | pressure %.2f",
+                LLFrameBudget::getTargetFrameSeconds() * 1000.f, LLFrameBudget::getSmoothedFrameSeconds() * 1000.f, LLFrameBudget::getPressure())); ypos += y_inc2;
+
+            // Job system utilisation since the last overlay refresh
+            static LL::JobSystem::Stats last_stats;
+            static LLTimer stats_timer;
+            static std::string jobs_line;
+            const F32 elapsed = stats_timer.getElapsedTimeF32();
+            if (elapsed >= 1.f || jobs_line.empty())
+            {
+                const LL::JobSystem::Stats cur = LL::JobSystem::getStats();
+                const F64 busy_ms = (cur.mBusyNanos - last_stats.mBusyNanos) / 1.0e6;
+                const U64 chunks = cur.mChunks - last_stats.mChunks;
+                const U64 worker_chunks = cur.mWorkerChunks - last_stats.mWorkerChunks;
+                jobs_line = llformat("Jobs: %u workers | %.0f batches/s | %.0f serial/s | busy %.1f ms/s | %.0f%% of chunks on workers",
+                    (U32)LL::JobSystem::getWorkerCount(),
+                    (cur.mBatches - last_stats.mBatches) / llmax(elapsed, 0.001f),
+                    (cur.mSerialFallbacks - last_stats.mSerialFallbacks) / llmax(elapsed, 0.001f),
+                    busy_ms / llmax(elapsed, 0.001f),
+                    chunks ? 100.0 * worker_chunks / chunks : 0.0);
+                last_stats = cur;
+                stats_timer.reset();
+            }
+            addText(xpos, ypos, jobs_line); ypos += y_inc2;
+
+            U32 anim_lod = 0;
+            U32 avatars = 0;
+            for (LLCharacter* character : LLCharacter::sInstances)
+            {
+                LLVOAvatar* avatar = (LLVOAvatar*)character;
+                if (!avatar->isDead() && avatar->isVisible())
+                {
+                    ++avatars;
+                    anim_lod += avatar->mAnimUpdatePeriod > 1 ? 1 : 0;
+                }
+            }
+            addText(xpos, ypos, llformat("Geometry rebuilds deferred: %u | texture faces scored in parallel: %u | avatars with reduced anim rate: %u/%u",
+                LLPipeline::sGeomUpdatesDeferred, LLViewerTextureList::sNumParallelFaceUpdates, anim_lod, avatars)); ypos += y_inc;
+        }
+        // </FS:Perf>
 
         static LLCachedControl<bool> debug_show_memory(gSavedSettings, "DebugShowMemory", false);
         if (debug_show_memory())
