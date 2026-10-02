@@ -27,6 +27,9 @@
 #include "llframebudget.h"
 
 #include "llviewercontrol.h"
+#include "llfocusmgr.h"
+#include "llviewerwindow.h"
+#include "llwindow.h"
 
 F32 LLFrameBudget::sTargetFrameSeconds = 1.f / 60.f;
 F32 LLFrameBudget::sSmoothedFrameSeconds = 1.f / 60.f;
@@ -45,11 +48,39 @@ void LLFrameBudget::update(F32 frame_seconds)
 {
     static LLCachedControl<F32> target_fps(gSavedSettings, "FSFrameBudgetTargetFPS", 60.f);
     static LLCachedControl<bool> adaptive(gSavedSettings, "FSAdaptiveQuality", true);
+    static LLCachedControl<bool> limit_framerate(gSavedSettings, "FSLimitFramerate", false);
+    static LLCachedControl<U32> max_fps(gSavedSettings, "FramePerSecondLimit", 0);
 
-    sTargetFrameSeconds = 1.f / llclamp((F32)target_fps, 15.f, 500.f);
+    // Frames deliberately slowed down by the FPS limiter are not "over
+    // budget": never aim higher than the limiter allows.
+    F32 effective_fps = llclamp((F32)target_fps, 15.f, 500.f);
+    if (limit_framerate && max_fps > 0)
+    {
+        effective_fps = llmin(effective_fps, (F32)max_fps * 0.97f);
+    }
+    sTargetFrameSeconds = 1.f / effective_fps;
 
     if (frame_seconds <= 0.f)
     {
+        return;
+    }
+
+    // In the background (or minimized) the main loop sleeps on purpose
+    // (BackgroundYieldTime), so frame time says nothing about load. Freeze
+    // the controller, and ignore a few frames after focus comes back.
+    static S32 settle_frames = 0;
+    constexpr S32 SETTLE_FRAMES = 30;
+    const bool backgrounded = !gFocusMgr.getAppHasFocus()
+        || (gViewerWindow && gViewerWindow->getWindow()
+            && (gViewerWindow->getWindow()->getMinimized() || !gViewerWindow->getWindow()->getVisible()));
+    if (backgrounded)
+    {
+        settle_frames = SETTLE_FRAMES;
+        return;
+    }
+    if (settle_frames > 0)
+    {
+        --settle_frames;
         return;
     }
 
