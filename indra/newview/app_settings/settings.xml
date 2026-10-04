@@ -27005,6 +27005,39 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <integer>1</integer>
     </map>
+    <key>FSAIWriterTranslateMenu</key>
+    <map>
+      <key>Comment</key>
+      <string>Show "Translate message (AI)" in the chat history context menu</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>FSAIWriterTranslateTo</key>
+    <map>
+      <key>Comment</key>
+      <string>Language the AI translates received chat messages into (written in English, e.g. Brazilian Portuguese, English, Spanish)</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string>Brazilian Portuguese</string>
+    </map>
+    <key>FSAIWriterTranslatorTag</key>
+    <map>
+      <key>Comment</key>
+      <string>Tag shown in front of AI translations in the chat history</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string>Tradutor</string>
+    </map>
     <key>FSAIWriterEndpoint</key>
     <map>
       <key>Comment</key>

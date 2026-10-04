@@ -32,6 +32,7 @@
 #endif
 
 #include "llviewermenu.h"
+#include "fschathistory.h" // <FS:Perf>
 
 // linden library includes
 #include "llavatarnamecache.h"  // IDEVO (I Are Not Men!)
@@ -12636,6 +12637,26 @@ void initialize_spellcheck_menu()
     enable.add("SpellCheck.EnableAddToDictionary", boost::bind(&enable_spellcheck_add_to_dictionary, _1));
     commit.add("SpellCheck.AddToIgnore", boost::bind(&handle_spellcheck_add_to_ignore, _1));
     enable.add("SpellCheck.EnableAddToIgnore", boost::bind(&enable_spellcheck_add_to_ignore, _1));
+
+    // <FS:Perf> AI translation of a chat message (FSChatHistory only)
+    auto chat_history_from_menu = [](const LLUICtrl* ctrl) -> FSChatHistory*
+    {
+        const LLContextMenu* menu = dynamic_cast<const LLContextMenu*>(ctrl->getParent());
+        return menu ? dynamic_cast<FSChatHistory*>(menu->getSpawningView()) : nullptr;
+    };
+    commit.add("Chat.TranslateMessageAI", [chat_history_from_menu](LLUICtrl* ctrl, const LLSD&)
+    {
+        if (FSChatHistory* history = chat_history_from_menu(ctrl))
+        {
+            history->translateMessageAtCursor();
+        }
+    });
+    enable.add("Chat.VisibleTranslateMessageAI", [chat_history_from_menu](LLUICtrl* ctrl, const LLSD&)
+    {
+        FSChatHistory* history = chat_history_from_menu(ctrl);
+        return history && history->canTranslateMessageAtCursor();
+    });
+    // </FS:Perf>
 }
 
 //<FS:KC> Centralize a some of these volume panel callbacks

@@ -31,6 +31,7 @@
 #include "llcombobox.h"
 #include "llfloaterreg.h"
 #include "llscrolllistctrl.h"
+#include "llscrolllistitem.h"
 #include "lltextbox.h"
 #include "lltexteditor.h"
 #include "llviewercontrol.h"
@@ -136,7 +137,13 @@ void FSFloaterAIWriter::requestSuggestions(bool more_creative)
         }
         for (const std::string& suggestion : result.mSuggestions)
         {
-            self->mSuggestionsList->addSimpleElement(suggestion);
+            // The row must use the column declared in the XUI ("text"),
+            // otherwise the cell goes to an unnamed, zero-width column.
+            LLSD row;
+            row["value"] = suggestion;
+            row["columns"][0]["column"] = "text";
+            row["columns"][0]["value"] = suggestion;
+            self->mSuggestionsList->addElement(row);
         }
         self->mSuggestionsList->selectFirstItem();
         self->onSuggestionSelected();
@@ -147,11 +154,11 @@ void FSFloaterAIWriter::requestSuggestions(bool more_creative)
 void FSFloaterAIWriter::onSuggestionSelected()
 {
     LLScrollListItem* item = mSuggestionsList->getFirstSelected();
-    if (!item || !item->getColumn(0))
+    if (!item)
     {
         return;
     }
-    mResultText->setText(item->getColumn(0)->getValue().asString());
+    mResultText->setText(item->getValue().asString());
     mUseBtn->setEnabled(true);
 }
 

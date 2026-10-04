@@ -50,6 +50,7 @@ public:
     };
     using rewrite_callback_t = std::function<void(const Result&)>;
     using models_callback_t = std::function<void(bool success, const std::vector<std::string>& models, const std::string& error)>;
+    using translate_callback_t = std::function<void(bool success, const std::string& translation, const std::string& error)>;
 
     // Style keys understood by rewrite(); see getStyleInstruction().
     static const std::vector<std::string>& getStyleKeys();
@@ -57,6 +58,9 @@ public:
     // Ask for up to three rewrites of text in the given style. When
     // more_creative is set, a higher temperature is used ("another idea").
     static void rewrite(const std::string& text, const std::string& style, bool more_creative, rewrite_callback_t callback);
+
+    // Translate a received chat message into FSAIWriterTranslateTo.
+    static void translate(const std::string& text, translate_callback_t callback);
 
     // List the models offered by the server (GET <base>/models).
     static void fetchModels(models_callback_t callback);
@@ -68,6 +72,10 @@ public:
 private:
     static std::string getStyleInstruction(const std::string& style);
     static void rewriteCoro(std::string text, std::string style, bool more_creative, rewrite_callback_t callback);
+    static void translateCoro(std::string text, translate_callback_t callback);
+    // POST a chat completion; returns true and the assistant text on success.
+    static bool chatCompletion(const std::string& system_prompt, const std::string& user_text, F32 temperature, std::string& content, std::string& error);
+    static std::string stripReasoning(const std::string& content);
     static void fetchModelsCoro(models_callback_t callback);
 };
 

@@ -29,6 +29,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "fschathistory.h"
+#include "fsaiwriter.h" // <FS:Perf>
 
 #include "llavatarnamecache.h"
 #include "llinstantmessage.h"
@@ -1461,12 +1462,129 @@ std::string applyModeratorStyle(U32 moderator_style)
 
 static LLTrace::BlockTimerStatHandle FTM_APPEND_MESSAGE("Append Chat Message");
 
+// <FS:Perf> AI translation of a message, triggered from the context menu
+bool FSChatHistory::findMessageAtCursor(std::string& from, std::string& text) const
+{
+    const LLWString& wtext = getWText();
+    if (wtext.empty())
+    {
+        return false;
+    }
+    // The paragraph (line between newlines) the user right-clicked on.
+    S32 pos = llclamp(mCursorPos, 0, (S32)wtext.size() - 1);
+    S32 start = pos;
+    while (start > 0 && wtext[start - 1] != '\n')
+    {
+        --start;
+    }
+    S32 end = pos;
+    while (end < (S32)wtext.size() && wtext[end] != '\n')
+    {
+        ++end;
+    }
+    std::string paragraph = wstring_to_utf8str(wtext.substr(start, end - start));
+    LLStringUtil::trim(paragraph);
+    if (paragraph.empty())
+    {
+        return false;
+    }
+
+    // Newest first: the most recent message whose text is on that line.
+    for (auto it = mRecentMessages.rbegin(); it != mRecentMessages.rend(); ++it)
+    {
+        if (it->mText.size() >= 1 && paragraph.find(it->mText) != std::string::npos)
+        {
+            from = it->mFrom;
+            text = it->mText;
+            return true;
+        }
+    }
+
+    // Not found (e.g. history loaded from the log): translate the line
+    // itself, without a leading [timestamp].
+    if (paragraph.front() == '[')
+    {
+        const size_t close = paragraph.find(']');
+        if (close != std::string::npos)
+        {
+            paragraph = paragraph.substr(close + 1);
+            LLStringUtil::trim(paragraph);
+        }
+    }
+    from.clear();
+    text = paragraph;
+    return !text.empty();
+}
+
+bool FSChatHistory::canTranslateMessageAtCursor() const
+{
+    static LLCachedControl<bool> enabled(gSavedSettings, "FSAIWriterTranslateMenu", true);
+    std::string from, text;
+    return enabled && findMessageAtCursor(from, text);
+}
+
+void FSChatHistory::translateMessageAtCursor()
+{
+    std::string from, text;
+    if (!findMessageAtCursor(from, text))
+    {
+        return;
+    }
+
+    LLHandle<LLView> handle = getHandle();
+    FSAIWriter::translate(text, [handle, from](bool success, const std::string& translation, const std::string& error)
+    {
+        FSChatHistory* self = dynamic_cast<FSChatHistory*>(handle.get());
+        if (!self)
+        {
+            return; // chat window closed meanwhile
+        }
+
+        LLUIColor color = LLUIColorTable::instance().getColor("SystemChatColor");
+        LLStyle::Params style;
+        style.color(color);
+        style.readonly_color(color);
+        style.font.style("ITALIC");
+
+        static LLCachedControl<std::string> tag(gSavedSettings, "FSAIWriterTranslatorTag", "Tradutor");
+        std::string line = "[" + std::string(tag) + "] ";
+        if (success)
+        {
+            line += from.empty() ? translation : from + ": " + translation;
+        }
+        else
+        {
+            line += error;
+        }
+
+        const bool at_bottom = self->mScroller->isAtBottom();
+        self->appendText(line, true, style);
+        if (at_bottom)
+        {
+            self->mScrollToBottom = true;
+        }
+    });
+}
+// </FS:Perf>
+
 void FSChatHistory::appendMessage(const LLChat& chat, const LLSD &args, const LLStyle::Params& input_append_params)
 {
     LL_RECORD_BLOCK_TIME(FTM_APPEND_MESSAGE);
     // Ansa: FIRE-12754: Hack around a weird issue where the doc size magically increases by 1px
     //       during draw if the doc exceeds the visible space and the scrollbar is getting visible.
     mScrollToBottom = (mScroller->isAtBottom() || mScroller->getScrollbar(LLScrollContainer::VERTICAL)->getDocPosMax() <= 1);
+
+    // <FS:Perf> remember the message for "Translate message (AI)"
+    if (!chat.mText.empty())
+    {
+        constexpr size_t MAX_RECENT_MESSAGES = 500;
+        mRecentMessages.push_back({ chat.mFromName, chat.mText });
+        if (mRecentMessages.size() > MAX_RECENT_MESSAGES)
+        {
+            mRecentMessages.pop_front();
+        }
+    }
+    // </FS:Perf>
 
     bool use_plain_text_chat_history = args["use_plain_text_chat_history"].asBoolean();
     bool square_brackets = false; // square brackets necessary for a system messages

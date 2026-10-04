@@ -268,25 +268,31 @@ void FSAIWriter::rewrite(const std::string& text, const std::string& style, bool
 }
 
 // static
-void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_creative, rewrite_callback_t callback)
+std::string FSAIWriter::stripReasoning(const std::string& raw_content)
 {
-    Result res;
+    std::string content = raw_content;
+    // Reasoning models (DeepSeek-R1, Qwen3, Gemma 4, ...) may prepend their
+    // thinking, or an empty thought channel, to the answer.
+    for (const char* tag : { "</think>", "</thinking>", "<channel|>" })
+    {
+        const size_t end = content.rfind(tag);
+        if (end != std::string::npos)
+        {
+            content = content.substr(end + strlen(tag));
+        }
+    }
+    return trim(content);
+}
+
+// static
+bool FSAIWriter::chatCompletion(const std::string& system_prompt, const std::string& user_text, F32 temperature, std::string& content, std::string& error)
+{
     const std::string url = trim(gSavedSettings.getString("FSAIWriterEndpoint"));
     if (url.empty())
     {
-        res.mError = "No AI server configured (FSAIWriterEndpoint).";
-        callback(res);
-        return;
+        error = "No AI server configured (FSAIWriterEndpoint).";
+        return false;
     }
-
-    const std::string system_prompt =
-        "You are a writing assistant for chat messages in the virtual world Second Life. "
-        "The user gives you a message they are about to send. " + getStyleInstruction(style) + " "
-        "Keep the original meaning, keep it short like a chat message, keep names, emojis and "
-        "Second Life terms unchanged. Always answer in the same language as the user's message "
-        "(a message in Portuguese gets Portuguese versions) unless you were asked to translate. "
-        "Reply with exactly three alternative versions, one per line, with no numbering, no quotes "
-        "and no explanations.";
 
     boost::json::object body;
     const std::string model = trim(gSavedSettings.getString("FSAIWriterModel"));
@@ -296,9 +302,9 @@ void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_crea
     }
     boost::json::array messages;
     messages.push_back(boost::json::object{ { "role", "system" }, { "content", system_prompt } });
-    messages.push_back(boost::json::object{ { "role", "user" }, { "content", text } });
+    messages.push_back(boost::json::object{ { "role", "user" }, { "content", user_text } });
     body["messages"] = std::move(messages);
-    body["temperature"] = more_creative ? 1.0 : 0.6;
+    body["temperature"] = temperature;
     body["max_tokens"] = 600;
     body["stream"] = false;
     if (gSavedSettings.getBOOL("FSAIWriterDisableThinking"))
@@ -329,7 +335,7 @@ void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_crea
         root = boost::json::parse(response, ec);
     }
 
-    std::string content;
+    bool success = false;
     if (!status)
     {
         std::string server_error;
@@ -337,13 +343,44 @@ void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_crea
         {
             extractContent(root, content, server_error);
         }
-        res.mError = server_error.empty() ? describeFailure(result) : server_error;
+        error = server_error.empty() ? describeFailure(result) : server_error;
     }
     else if (response.empty() || ec.failed())
     {
-        res.mError = "The AI server returned an invalid response.";
+        error = "The AI server returned an invalid response.";
     }
-    else if (extractContent(root, content, res.mError))
+    else if (extractContent(root, content, error))
+    {
+        content = stripReasoning(content);
+        success = !content.empty();
+        if (!success)
+        {
+            error = "The AI returned an empty answer.";
+        }
+    }
+
+    if (!success)
+    {
+        LL_WARNS("AIWriter") << "Request to " << url << " failed: " << error << LL_ENDL;
+    }
+    return success;
+}
+
+// static
+void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_creative, rewrite_callback_t callback)
+{
+    Result res;
+    const std::string system_prompt =
+        "You are a writing assistant for chat messages in the virtual world Second Life. "
+        "The user gives you a message they are about to send. " + getStyleInstruction(style) + " "
+        "Keep the original meaning, keep it short like a chat message, keep names, emojis and "
+        "Second Life terms unchanged. Always answer in the same language as the user's message "
+        "(a message in Portuguese gets Portuguese versions) unless you were asked to translate. "
+        "Reply with exactly three alternative versions, one per line, with no numbering, no quotes "
+        "and no explanations.";
+
+    std::string content;
+    if (chatCompletion(system_prompt, text, more_creative ? 1.0f : 0.6f, content, res.mError))
     {
         res.mSuggestions = parseSuggestions(content);
         res.mSuccess = !res.mSuggestions.empty();
@@ -352,12 +389,33 @@ void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_crea
             res.mError = "The AI returned an empty answer.";
         }
     }
-
-    if (!res.mSuccess)
-    {
-        LL_WARNS("AIWriter") << "Rewrite request to " << url << " failed: " << res.mError << LL_ENDL;
-    }
     callback(res);
+}
+
+// static
+void FSAIWriter::translate(const std::string& text, translate_callback_t callback)
+{
+    LLCoros::instance().launch("FSAIWriter::translateCoro", [text, callback]() { translateCoro(text, callback); });
+}
+
+// static
+void FSAIWriter::translateCoro(std::string text, translate_callback_t callback)
+{
+    std::string target = trim(gSavedSettings.getString("FSAIWriterTranslateTo"));
+    if (target.empty())
+    {
+        target = "Brazilian Portuguese";
+    }
+    const std::string system_prompt =
+        "You translate chat messages from the virtual world Second Life. Translate the user's message into natural, "
+        "fluent " + target + ", the way a native speaker would write it in a chat. Keep names, emojis, slang meaning "
+        "and Second Life terms. If the message is already in " + target + ", return it unchanged. "
+        "Reply with the translation only: no quotes, no notes, no explanations.";
+
+    std::string content;
+    std::string error;
+    const bool success = chatCompletion(system_prompt, text, 0.2f, content, error);
+    callback(success, content, error);
 }
 
 // static

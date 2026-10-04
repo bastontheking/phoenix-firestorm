@@ -123,6 +123,10 @@ class FSChatHistory : public LLTextEditor   // <FS:Zi> FIRE-8600: TAB out of cha
          * @param input_append_params - font style.
          */
         void appendMessage(const LLChat& chat, const LLSD &args = LLSD(), const LLStyle::Params& input_append_params = LLStyle::Params());
+
+        // <FS:Perf> AI translation of the message under the cursor (context menu)
+        bool canTranslateMessageAtCursor() const;
+        void translateMessageAtCursor();
         void clear() override;
         void draw() override;
 
@@ -158,6 +162,15 @@ class FSChatHistory : public LLTextEditor   // <FS:Zi> FIRE-8600: TAB out of cha
 
         S32 mUnreadChatSources;
         unread_messages_update_callback_t mUnreadMessagesUpdateSignal;
+
+        // <FS:Perf> recent messages, used to find who said the line under the cursor
+        struct RecentMessage
+        {
+            std::string mFrom;
+            std::string mText;
+        };
+        std::deque<RecentMessage> mRecentMessages;
+        bool findMessageAtCursor(std::string& from, std::string& text) const;
 
     // <FS_Zi> FIRE-8602: Typing in chat history focuses chat input line
     public:
