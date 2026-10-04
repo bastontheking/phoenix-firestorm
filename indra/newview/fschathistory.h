@@ -127,6 +127,14 @@ class FSChatHistory : public LLTextEditor   // <FS:Zi> FIRE-8600: TAB out of cha
         // <FS:Perf> AI translation of the message under the cursor (context menu)
         bool canTranslateMessageAtCursor() const;
         void translateMessageAtCursor();
+
+        // <FS:Perf> "Delete for me": remove one message from this window, from
+        // the saved transcript and (through the callback) from the owner's
+        // in-memory message list. Nothing is sent to anyone.
+        using forget_message_callback_t = std::function<void(const std::string& from, const std::string& text)>;
+        void setMessageStore(const std::string& transcript_file, forget_message_callback_t forget_message);
+        bool canDeleteMessageAtCursor() const;
+        void deleteMessageAtCursor();
         void clear() override;
         void draw() override;
 
@@ -172,6 +180,11 @@ class FSChatHistory : public LLTextEditor   // <FS:Zi> FIRE-8600: TAB out of cha
         std::deque<RecentMessage> mRecentMessages;
         bool findMessageAtCursor(std::string& from, std::string& text, std::string* line = nullptr) const;
         bool isTranslatableLine(const std::string& line) const;
+        bool paragraphAtCursor(S32& start, S32& end) const;
+        bool isTranslationLine(const std::string& line) const;
+        void removeFromTranscript(const std::string& from, const std::string& text) const;
+        std::string mTranscriptFile;
+        forget_message_callback_t mForgetMessage;
         void requestTranslation(const std::string& from, const std::string& text, const std::string& original_line, bool automatic);
         void autoTranslate(const LLChat& chat, const LLSD& args);
         void appendMessageImpl(const LLChat& chat, const LLSD& args, const LLStyle::Params& input_append_params);

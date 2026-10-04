@@ -30,6 +30,7 @@
 
 #include "fschathistory.h"
 #include "fsaiwriter.h" // <FS:Perf>
+#include "lllogchat.h" // <FS:Perf>
 
 #include "llavatarnamecache.h"
 #include "llinstantmessage.h"
@@ -1537,6 +1538,179 @@ bool FSChatHistory::isTranslatableLine(const std::string& line) const
     LLStringUtil::trim(trimmed);
     const std::string prefix = "[" + std::string(tag) + "]";
     return trimmed.compare(0, prefix.size(), prefix) != 0;
+}
+
+bool FSChatHistory::paragraphAtCursor(S32& start, S32& end) const
+{
+    const LLWString& wtext = getWText();
+    if (wtext.empty())
+    {
+        return false;
+    }
+    const S32 pos = llclamp(mCursorPos, 0, (S32)wtext.size() - 1);
+    start = pos;
+    while (start > 0 && wtext[start - 1] != '\n')
+    {
+        --start;
+    }
+    end = pos;
+    while (end < (S32)wtext.size() && wtext[end] != '\n')
+    {
+        ++end;
+    }
+    return end > start;
+}
+
+bool FSChatHistory::isTranslationLine(const std::string& line) const
+{
+    static LLCachedControl<std::string> tag(gSavedSettings, "FSAIWriterTranslatorTag", "Translator");
+    std::string trimmed = line;
+    LLStringUtil::trim(trimmed);
+    const std::string prefix = "[" + std::string(tag) + "]";
+    return trimmed.compare(0, prefix.size(), prefix) == 0;
+}
+
+void FSChatHistory::setMessageStore(const std::string& transcript_file, forget_message_callback_t forget_message)
+{
+    mTranscriptFile = transcript_file;
+    mForgetMessage = std::move(forget_message);
+}
+
+bool FSChatHistory::canDeleteMessageAtCursor() const
+{
+    S32 start, end;
+    if (!paragraphAtCursor(start, end))
+    {
+        return false;
+    }
+    std::string paragraph = wstring_to_utf8str(getWText().substr(start, end - start));
+    LLStringUtil::trim(paragraph);
+    return !paragraph.empty();
+}
+
+void FSChatHistory::removeFromTranscript(const std::string& from, const std::string& text) const
+{
+    if (mTranscriptFile.empty() || text.empty())
+    {
+        return;
+    }
+    const std::string path = LLLogChat::makeLogFileName(mTranscriptFile);
+    std::vector<std::string> lines;
+    {
+        llifstream in(path.c_str(), std::ios::binary);
+        if (!in.is_open())
+        {
+            return;
+        }
+        std::string line;
+        while (std::getline(in, line))
+        {
+            lines.push_back(line);
+        }
+    }
+
+    // A message spans as many lines as it has line breaks; its first line
+    // carries the sender. Search newest first.
+    std::vector<std::string> text_lines;
+    {
+        std::istringstream ts(text);
+        std::string l;
+        while (std::getline(ts, l))
+        {
+            text_lines.push_back(l);
+        }
+    }
+    if (text_lines.empty())
+    {
+        return;
+    }
+    const std::string first = text_lines.front();
+    for (size_t i = lines.size(); i-- > 0; )
+    {
+        const std::string& line = lines[i];
+        if (line.find(first) != std::string::npos && (from.empty() || line.find(from) != std::string::npos))
+        {
+            const size_t count = llmin(text_lines.size(), lines.size() - i);
+            lines.erase(lines.begin() + i, lines.begin() + i + count);
+            llofstream out(path.c_str(), std::ios::binary | std::ios::trunc);
+            for (const std::string& kept : lines)
+            {
+                out << kept << '\n';
+            }
+            LL_INFOS("ChatHistory") << "Removed one message from a transcript (delete for me)" << LL_ENDL;
+            return;
+        }
+    }
+}
+
+void FSChatHistory::deleteMessageAtCursor()
+{
+    S32 start, end;
+    if (!paragraphAtCursor(start, end))
+    {
+        return;
+    }
+    const LLWString& wtext = getWText();
+    const std::string paragraph = wstring_to_utf8str(wtext.substr(start, end - start));
+    const bool is_translation = isTranslationLine(paragraph);
+
+    std::string from, text, line;
+    const bool known = !is_translation && findMessageAtCursor(from, text, &line);
+
+    // Also remove the translation line that belongs to this message.
+    S32 del_end = end;
+    if (!is_translation && end < (S32)wtext.size())
+    {
+        S32 next_end = end + 1;
+        while (next_end < (S32)wtext.size() && wtext[next_end] != '\n')
+        {
+            ++next_end;
+        }
+        if (isTranslationLine(wstring_to_utf8str(wtext.substr(end + 1, next_end - end - 1))))
+        {
+            del_end = next_end;
+        }
+        mTranslatedLines.erase(paragraph);
+    }
+
+    // Remove the text together with one line break.
+    const bool at_bottom = mScroller->isAtBottom();
+    if (del_end < (S32)wtext.size())
+    {
+        removeStringNoUndo(start, del_end - start + 1);
+    }
+    else if (start > 0)
+    {
+        removeStringNoUndo(start - 1, del_end - start + 1);
+    }
+    else
+    {
+        removeStringNoUndo(start, del_end - start);
+    }
+    needsReflow();
+    if (at_bottom)
+    {
+        mScrollToBottom = true;
+    }
+
+    if (!known)
+    {
+        return; // a translation or an unidentified line: display only
+    }
+
+    for (auto it = mRecentMessages.rbegin(); it != mRecentMessages.rend(); ++it)
+    {
+        if (it->mText == text && it->mFrom == from)
+        {
+            mRecentMessages.erase(std::next(it).base());
+            break;
+        }
+    }
+    removeFromTranscript(from, text);
+    if (mForgetMessage)
+    {
+        mForgetMessage(from, text);
+    }
 }
 
 bool FSChatHistory::canTranslateMessageAtCursor() const

@@ -1002,6 +1002,25 @@ bool FSFloaterIM::postBuild()
 
     mInputEditor = getChild<LLChatEntry>("chat_editor");
     mChatHistory = getChild<FSChatHistory>("chat_history");
+
+    // <FS:Perf> "Delete for me": forget the message in the transcript and the session
+    mChatHistory->setMessageStore(LLIMModel::instance().getHistoryFileName(mSessionID),
+        [session_id = mSessionID](const std::string& from, const std::string& text)
+        {
+            if (LLIMModel::LLIMSession* session = LLIMModel::instance().findIMSession(session_id))
+            {
+                // newest messages are at the front
+                for (auto it = session->mMsgs.begin(); it != session->mMsgs.end(); ++it)
+                {
+                    if ((*it)["message"].asString() == text && (from.empty() || (*it)["from"].asString() == from))
+                    {
+                        session->mMsgs.erase(it);
+                        break;
+                    }
+                }
+            }
+        });
+    // </FS:Perf>
     mChatLayoutPanel = getChild<LLLayoutPanel>("chat_layout_panel");
     mInputPanels = getChild<LLLayoutStack>("input_panels");
     mChatLayoutPanelHeight = mChatLayoutPanel->getRect().getHeight();

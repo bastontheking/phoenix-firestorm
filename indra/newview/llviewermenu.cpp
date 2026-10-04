@@ -12656,6 +12656,18 @@ void initialize_spellcheck_menu()
         FSChatHistory* history = chat_history_from_menu(ctrl);
         return history && history->canTranslateMessageAtCursor();
     });
+    commit.add("Chat.DeleteMessageForMe", [chat_history_from_menu](LLUICtrl* ctrl, const LLSD&)
+    {
+        if (FSChatHistory* history = chat_history_from_menu(ctrl))
+        {
+            history->deleteMessageAtCursor();
+        }
+    });
+    enable.add("Chat.VisibleDeleteMessageForMe", [chat_history_from_menu](LLUICtrl* ctrl, const LLSD&)
+    {
+        FSChatHistory* history = chat_history_from_menu(ctrl);
+        return history && history->canDeleteMessageAtCursor();
+    });
     // </FS:Perf>
 }
 

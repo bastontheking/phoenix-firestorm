@@ -221,6 +221,22 @@ bool FSFloaterNearbyChat::postBuild()
     mChatHistory = getChild<FSChatHistory>("chat_history");
     mChatHistoryMuted = getChild<FSChatHistory>("chat_history_muted");
 
+    // <FS:Perf> "Delete for me": forget the message in the transcript and the archive
+    auto forget = [this](const std::string& from, const std::string& text)
+    {
+        for (auto it = mMessageArchive.rbegin(); it != mMessageArchive.rend(); ++it)
+        {
+            if (it->mText == text && (from.empty() || it->mFromName == from))
+            {
+                mMessageArchive.erase(std::next(it).base());
+                break;
+            }
+        }
+    };
+    mChatHistory->setMessageStore("chat", forget);
+    mChatHistoryMuted->setMessageStore("chat", forget);
+    // </FS:Perf>
+
     mUnreadMessagesNotificationPanel = getChild<LLLayoutPanel>("unread_messages_holder");
     mUnreadMessagesNotificationTextBox = getChild<LLTextBox>("unread_messages_text");
     mChatHistory->setUnreadMessagesUpdateCallback(boost::bind(&FSFloaterNearbyChat::updateUnreadMessageNotification, this, _1, false));
