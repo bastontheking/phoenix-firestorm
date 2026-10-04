@@ -709,6 +709,19 @@ void LLHUDEffectLookAt::setSourceObject(LLViewerObject* objectp)
 // <FS:Perf> Look-at highlight helpers
 namespace
 {
+    // What the sender's viewer is doing, from the look-at type it broadcasts.
+    std::string lookAtActionLabel(const std::string& attention)
+    {
+        if (attention == "Focus")        return "ZOOM / CAMERA FOCUS";
+        if (attention == "Select")       return "CLICKED / SELECTED";
+        if (attention == "Mouselook")    return "MOUSELOOK";
+        if (attention == "FreeLook")     return "looking around";
+        if (attention == "Hover")        return "hovering";
+        if (attention == "Conversation") return "in conversation";
+        if (attention == "Respond")      return "responding";
+        return std::string(); // Idle, AutoListen, None, Clear: nothing worth labelling
+    }
+
     // World size that keeps the marker at roughly the same on-screen size.
     F32 lookAtHighlightSize(const LLVector3& target)
     {
@@ -781,6 +794,17 @@ void LLHUDEffectLookAt::render()
         }
 
         static LLCachedControl<U32> show_names(gSavedSettings, "DebugLookAtShowNames");
+        // <FS:Perf> in highlight mode, also label what the marker means
+        const std::string action = highlight ? lookAtActionLabel((*mAttentions)[mTargetType].mName) : std::string();
+        if (!action.empty() && show_names == 0)
+        {
+            const LLFontGL* fontp = LLFontGL::getFont(LLFontDescriptor("SansSerif", "Large", LLFontGL::BOLD));
+            LLVector3 position = target + LLVector3(0.f, 0.f, lookAtHighlightSize(target) * 1.4f);
+            gGL.pushMatrix();
+            hud_render_utf8text(action, position, *fontp, LLFontGL::NORMAL, LLFontGL::DROP_SHADOW, -0.5f * fontp->getWidthF32(action), 3.0f, lookAtColor, false);
+            gGL.popMatrix();
+        }
+        // </FS:Perf>
         if ((show_names > 0) && !gRlvHandler.hasBehaviour(RLV_BHVR_SHOWNAMES))
         {
             // render name for crosshair
@@ -808,6 +832,11 @@ void LLHUDEffectLookAt::render()
                         name = nameBuffer.getAccountName();
                         break;
                 }
+            }
+
+            if (!action.empty()) // <FS:Perf>
+            {
+                name = name.empty() ? action : name + " - " + action;
             }
 
             gGL.pushMatrix();
