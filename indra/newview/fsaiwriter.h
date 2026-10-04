@@ -52,6 +52,22 @@ public:
     using models_callback_t = std::function<void(bool success, const std::vector<std::string>& models, const std::string& error)>;
     using translate_callback_t = std::function<void(bool success, const std::string& translation, const std::string& error)>;
 
+    // Chat bot: role ("system" / "user" / "assistant") and content.
+    struct ChatMessage
+    {
+        std::string mRole;
+        std::string mContent;
+    };
+    using chat_callback_t = std::function<void(bool success, const std::string& reply, const std::string& error)>;
+
+    struct SearchResult
+    {
+        std::string mTitle;
+        std::string mUrl;
+        std::string mSnippet;
+    };
+    using search_callback_t = std::function<void(bool success, const std::vector<SearchResult>& results, const std::string& error)>;
+
     // Style keys understood by rewrite(); see getStyleInstruction().
     static const std::vector<std::string>& getStyleKeys();
 
@@ -64,6 +80,13 @@ public:
     // In automatic mode a message that is already in the target language
     // yields success with an empty translation (nothing to show).
     static void translate(const std::string& text, bool automatic, translate_callback_t callback);
+
+    // Free-form conversation with the given messages (system prompt first).
+    static void chat(const std::vector<ChatMessage>& messages, chat_callback_t callback);
+
+    // Web search (DuckDuckGo Lite by default, or a SearXNG instance whose
+    // URL contains "format=json"), see FSAIChatbotSearchURL.
+    static void webSearch(const std::string& query, search_callback_t callback);
 
     // List the models offered by the server (GET <base>/models).
     static void fetchModels(models_callback_t callback);
@@ -78,6 +101,9 @@ private:
     static void translateCoro(std::string text, bool automatic, translate_callback_t callback);
     // POST a chat completion; returns true and the assistant text on success.
     static bool chatCompletion(const std::string& system_prompt, const std::string& user_text, F32 temperature, std::string& content, std::string& error);
+    static bool chatCompletionMessages(const std::vector<ChatMessage>& messages, F32 temperature, S32 max_tokens, std::string& content, std::string& error);
+    static void chatCoro(std::vector<ChatMessage> messages, chat_callback_t callback);
+    static void webSearchCoro(std::string query, search_callback_t callback);
     static std::string stripReasoning(const std::string& content);
     static void fetchModelsCoro(models_callback_t callback);
 };

@@ -27098,6 +27098,50 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <real>1.0</real>
     </map>
+    <key>FSAIChatbotEnabled</key>
+    <map>
+      <key>Comment</key>
+      <string>Show the AI ChatBot tab in the conversations window</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
+    <key>FSAIChatbotHistoryLength</key>
+    <map>
+      <key>Comment</key>
+      <string>Number of previous ChatBot messages sent to the AI as conversation context</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>U32</string>
+      <key>Value</key>
+      <integer>30</integer>
+    </map>
+    <key>FSAIChatbotWebSearch</key>
+    <map>
+      <key>Comment</key>
+      <string>ChatBot: search the web for each question and give the results to the AI</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>0</integer>
+    </map>
+    <key>FSAIChatbotSearchURL</key>
+    <map>
+      <key>Comment</key>
+      <string>Web search URL used by the ChatBot. The query is appended (or replaces {query}). DuckDuckGo Lite HTML by default; a SearXNG URL containing format=json is also supported, e.g. http://HOST:8888/search?format=json&amp;q=</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>String</string>
+      <key>Value</key>
+      <string>https://lite.duckduckgo.com/lite/?q=</string>
+    </map>
     <key>FSAIWriterEndpoint</key>
     <map>
       <key>Comment</key>

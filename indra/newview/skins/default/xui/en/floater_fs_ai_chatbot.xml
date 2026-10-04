@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<floater
+ name="fs_ai_chatbot"
+ title="ChatBot"
+ short_title="ChatBot"
+ can_resize="true"
+ can_minimize="true"
+ can_close="true"
+ height="320"
+ width="420"
+ min_height="200"
+ min_width="320"
+ layout="topleft"
+ save_rect="true"
+ single_instance="true">
+  <floater.string name="welcome">Ask your AI anything. Nothing here is sent to Second Life unless you press "Send to chat".</floater.string>
+  <floater.string name="you">You</floater.string>
+  <floater.string name="you_oneoff">You (single message)</floater.string>
+  <floater.string name="bot">ChatBot</floater.string>
+  <floater.string name="thinking">ChatBot is thinking...</floater.string>
+  <floater.string name="searching">Searching the web...</floater.string>
+  <floater.string name="sources">Sources:</floater.string>
+  <floater.string name="sent_to_chat">Last answer sent to nearby chat.</floater.string>
+  <floater.string name="nothing_to_send">There is no answer to send yet.</floater.string>
+  <floater.string name="cleared">Conversation cleared.</floater.string>
+
+  <text_editor
+   follows="all"
+   layout="topleft"
+   left="4"
+   right="-4"
+   top="4"
+   height="216"
+   word_wrap="true"
+   parse_urls="true"
+   track_end="true"
+   font="SansSerifSmall"
+   name="chatbot_history" />
+
+  <text
+   follows="left|bottom|right"
+   layout="topleft"
+   left="6"
+   right="-4"
+   top_pad="2"
+   height="16"
+   use_ellipses="true"
+   text_color="LtGray_50"
+   name="chatbot_status" />
+
+  <line_editor
+   follows="left|bottom|right"
+   layout="topleft"
+   left="4"
+   right="-80"
+   top_pad="2"
+   height="23"
+   max_length_bytes="4000"
+   spellcheck="true"
+   label="Message the ChatBot"
+   name="chatbot_input" />
+  <button
+   follows="right|bottom"
+   layout="topleft"
+   right="-4"
+   top_delta="0"
+   height="23"
+   width="72"
+   label="Send"
+   name="chatbot_send_btn" />
+
+  <check_box
+   follows="left|bottom"
+   layout="topleft"
+   left="4"
+   top_pad="6"
+   height="18"
+   width="130"
+   label="Single message"
+   tool_tip="Send only this question, without the conversation history (it is also left out of later context)"
+   name="chatbot_oneoff_check" />
+  <check_box
+   follows="left|bottom"
+   layout="topleft"
+   left_pad="4"
+   top_delta="0"
+   height="18"
+   width="110"
+   label="Search the web"
+   tool_tip="Search the internet for the question and give the results to the AI"
+   control_name="FSAIChatbotWebSearch"
+   name="chatbot_websearch_check" />
+  <button
+   follows="right|bottom"
+   layout="topleft"
+   right="-98"
+   top_delta="-2"
+   height="22"
+   width="100"
+   label="Send to chat"
+   tool_tip="Post the last answer to nearby chat"
+   name="chatbot_to_chat_btn" />
+  <button
+   follows="right|bottom"
+   layout="topleft"
+   right="-34"
+   top_delta="0"
+   height="22"
+   width="60"
+   label="Clear"
+   tool_tip="Erase the conversation history"
+   name="chatbot_clear_btn" />
+  <button
+   follows="right|bottom"
+   layout="topleft"
+   right="-4"
+   top_delta="0"
+   height="22"
+   width="26"
+   image_overlay="Icon_Gear_Foreground"
+   label=""
+   tool_tip="AI server settings"
+   name="chatbot_settings_btn" />
+</floater>

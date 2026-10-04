@@ -145,6 +145,16 @@ void FSFloaterIMContainer::initTabs()
             addFloater(floater_chat, true, IM_NOTHING_SPECIAL);
         }
     }
+    // <FS:Perf> AI chat bot tab
+    if (gSavedSettings.getBOOL("FSAIChatbotEnabled"))
+    {
+        LLFloater* chatbot = LLFloaterReg::getInstance("fs_ai_chatbot");
+        if (chatbot && chatbot->getHost() != this)
+        {
+            addFloater(chatbot, false, IM_NOTHING_SPECIAL);
+        }
+    }
+    // </FS:Perf>
 }
 
 // [SL:KB] - Patch: UI-TabRearrange | Checked: 2012-05-05 (Catznip-3.3.0)
@@ -260,6 +270,41 @@ void FSFloaterIMContainer::addFloater(LLFloater* floaterp,
 
         floaterp->setCanClose(false);
         return;
+    }
+
+    // <FS:Perf> AI chat bot: locked tab right after nearby chat
+    if (floaterp->getName() == "fs_ai_chatbot")
+    {
+        S32 num_locked_tabs = mTabContainer->getNumLockedTabs();
+        mTabContainer->unlockTabs();
+        S32 nearby_index = -1;
+        for (S32 i = 0; i < mTabContainer->getTabCount(); ++i)
+        {
+            if (dynamic_cast<FSFloaterNearbyChat*>(mTabContainer->getPanelByIndex(i)))
+            {
+                nearby_index = i;
+                break;
+            }
+        }
+        LLPanel* previously_selected = mTabContainer->getCurrentPanel();
+        if (nearby_index >= 0)
+        {
+            mTabContainer->selectTab(nearby_index);
+            LLMultiFloater::addFloater(floaterp, false, LLTabContainer::RIGHT_OF_CURRENT);
+        }
+        else
+        {
+            LLMultiFloater::addFloater(floaterp, false, LLTabContainer::START);
+        }
+        if (previously_selected)
+        {
+            mTabContainer->selectTabPanel(previously_selected);
+        }
+        mTabContainer->lockTabs(num_locked_tabs + 1);
+        floaterp->setCanClose(false);
+        floaterp->setCanTearOff(false);
+        return;
+        // </FS:Perf>
     }
 
     LLTabContainer::eInsertionPoint insertion_point =  no_auto_insertion_point;

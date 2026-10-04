@@ -31,7 +31,10 @@
 #include "llhttpconstants.h"
 #include "llviewercontrol.h"
 
+#include "lluri.h"
+
 #include <boost/json.hpp>
+#include <boost/regex.hpp>
 
 namespace
 {
@@ -286,6 +289,12 @@ std::string FSAIWriter::stripReasoning(const std::string& raw_content)
 // static
 bool FSAIWriter::chatCompletion(const std::string& system_prompt, const std::string& user_text, F32 temperature, std::string& content, std::string& error)
 {
+    return chatCompletionMessages({ { "system", system_prompt }, { "user", user_text } }, temperature, 600, content, error);
+}
+
+// static
+bool FSAIWriter::chatCompletionMessages(const std::vector<ChatMessage>& chat_messages, F32 temperature, S32 max_tokens, std::string& content, std::string& error)
+{
     const std::string url = trim(gSavedSettings.getString("FSAIWriterEndpoint"));
     if (url.empty())
     {
@@ -300,11 +309,13 @@ bool FSAIWriter::chatCompletion(const std::string& system_prompt, const std::str
         body["model"] = model;
     }
     boost::json::array messages;
-    messages.push_back(boost::json::object{ { "role", "system" }, { "content", system_prompt } });
-    messages.push_back(boost::json::object{ { "role", "user" }, { "content", user_text } });
+    for (const ChatMessage& msg : chat_messages)
+    {
+        messages.push_back(boost::json::object{ { "role", msg.mRole }, { "content", msg.mContent } });
+    }
     body["messages"] = std::move(messages);
     body["temperature"] = temperature;
-    body["max_tokens"] = 600;
+    body["max_tokens"] = max_tokens;
     body["stream"] = false;
     if (gSavedSettings.getBOOL("FSAIWriterDisableThinking"))
     {
@@ -484,4 +495,164 @@ void FSAIWriter::fetchModelsCoro(models_callback_t callback)
         return;
     }
     callback(true, models, "");
+}
+
+// static
+void FSAIWriter::chat(const std::vector<ChatMessage>& messages, chat_callback_t callback)
+{
+    LLCoros::instance().launch("FSAIWriter::chatCoro", [messages, callback]() { chatCoro(messages, callback); });
+}
+
+// static
+void FSAIWriter::chatCoro(std::vector<ChatMessage> messages, chat_callback_t callback)
+{
+    std::string content;
+    std::string error;
+    const bool success = chatCompletionMessages(messages, 0.7f, 2048, content, error);
+    callback(success, content, error);
+}
+
+namespace
+{
+    std::string decodeHtml(const std::string& in)
+    {
+        // strip tags, then the handful of entities search pages use
+        std::string s = boost::regex_replace(in, boost::regex("<[^>]*>"), "");
+        static const std::pair<const char*, const char*> entities[] = {
+            { "&amp;", "&" }, { "&quot;", "\"" }, { "&#x27;", "'" }, { "&#39;", "'" },
+            { "&lt;", "<" }, { "&gt;", ">" }, { "&nbsp;", " " } };
+        for (const auto& [from, to] : entities)
+        {
+            LLStringUtil::replaceString(s, from, to);
+        }
+        s = boost::regex_replace(s, boost::regex("\\s+"), " ");
+        return trim(s);
+    }
+
+    std::vector<FSAIWriter::SearchResult> parseDuckDuckGoLite(const std::string& html, size_t max_results)
+    {
+        std::vector<FSAIWriter::SearchResult> results;
+        const boost::regex link_re("<a[^>]*href=\"([^\"]*)\"[^>]*class='result-link'[^>]*>([\\s\\S]*?)</a>");
+        const boost::regex snippet_re("<td class='result-snippet'>([\\s\\S]*?)</td>");
+
+        for (boost::sregex_iterator it(html.begin(), html.end(), link_re), end; it != end && results.size() < max_results; ++it)
+        {
+            FSAIWriter::SearchResult r;
+            std::string href = decodeHtml((*it)[1].str());
+            // DuckDuckGo wraps the target: //duckduckgo.com/l/?uddg=<escaped url>&rut=...
+            const size_t uddg = href.find("uddg=");
+            if (uddg != std::string::npos)
+            {
+                std::string target = href.substr(uddg + 5);
+                const size_t amp = target.find('&');
+                if (amp != std::string::npos)
+                {
+                    target = target.substr(0, amp);
+                }
+                href = LLURI::unescape(target);
+            }
+            r.mUrl = href;
+            r.mTitle = decodeHtml((*it)[2].str());
+            results.push_back(r);
+        }
+
+        size_t i = 0;
+        for (boost::sregex_iterator it(html.begin(), html.end(), snippet_re), end; it != end && i < results.size(); ++it, ++i)
+        {
+            results[i].mSnippet = decodeHtml((*it)[1].str());
+        }
+        return results;
+    }
+
+    std::vector<FSAIWriter::SearchResult> parseSearxng(const std::string& json, size_t max_results)
+    {
+        std::vector<FSAIWriter::SearchResult> results;
+        boost::system::error_code ec;
+        boost::json::value root = boost::json::parse(json, ec);
+        if (ec.failed() || !root.is_object())
+        {
+            return results;
+        }
+        const boost::json::value* list = root.as_object().if_contains("results");
+        if (!list || !list->is_array())
+        {
+            return results;
+        }
+        auto field = [](const boost::json::object& o, const char* key) -> std::string
+        {
+            const boost::json::value* v = o.if_contains(key);
+            return (v && v->is_string()) ? std::string(v->as_string()) : std::string();
+        };
+        for (const boost::json::value& entry : list->as_array())
+        {
+            if (results.size() >= max_results)
+            {
+                break;
+            }
+            if (entry.is_object())
+            {
+                const boost::json::object& o = entry.as_object();
+                results.push_back({ field(o, "title"), field(o, "url"), field(o, "content") });
+            }
+        }
+        return results;
+    }
+}
+
+// static
+void FSAIWriter::webSearch(const std::string& query, search_callback_t callback)
+{
+    LLCoros::instance().launch("FSAIWriter::webSearchCoro", [query, callback]() { webSearchCoro(query, callback); });
+}
+
+// static
+void FSAIWriter::webSearchCoro(std::string query, search_callback_t callback)
+{
+    std::vector<SearchResult> results;
+    std::string base = trim(gSavedSettings.getString("FSAIChatbotSearchURL"));
+    if (base.empty())
+    {
+        base = "https://lite.duckduckgo.com/lite/?q=";
+    }
+    const bool searxng = base.find("format=json") != std::string::npos;
+    std::string url;
+    if (base.find("{query}") != std::string::npos)
+    {
+        url = base;
+        LLStringUtil::replaceString(url, "{query}", LLURI::escape(query));
+    }
+    else
+    {
+        url = base + LLURI::escape(query);
+    }
+
+    LLCore::HttpHeaders::ptr_t headers = std::make_shared<LLCore::HttpHeaders>();
+    // Plain browser user agent: search pages refuse unknown clients.
+    headers->append(HTTP_OUT_HEADER_USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36");
+    LLCore::HttpOptions::ptr_t options = std::make_shared<LLCore::HttpOptions>();
+    options->setTimeout(20);
+    options->setTransferTimeout(20);
+    options->setFollowRedirects(true);
+    options->setRetries(0);
+
+    LLCoreHttpUtil::HttpCoroutineAdapter adapter("FSAIChatbotSearch", LLCore::HttpRequest::DEFAULT_POLICY_ID);
+    LLCore::HttpRequest::ptr_t request = std::make_shared<LLCore::HttpRequest>();
+    LLSD result = adapter.getRawAndSuspend(request, url, options, headers);
+
+    const LLCore::HttpStatus status = LLCoreHttpUtil::HttpCoroutineAdapter::getStatusFromLLSD(result[LLCoreHttpUtil::HttpCoroutineAdapter::HTTP_RESULTS]);
+    if (!status)
+    {
+        callback(false, results, "Web search failed: " + status.toString());
+        return;
+    }
+    const LLSD::Binary& raw_body = result[LLCoreHttpUtil::HttpCoroutineAdapter::HTTP_RESULTS_RAW].asBinary();
+    const std::string body(raw_body.begin(), raw_body.end());
+    constexpr size_t MAX_RESULTS = 5;
+    results = searxng ? parseSearxng(body, MAX_RESULTS) : parseDuckDuckGoLite(body, MAX_RESULTS);
+    if (results.empty())
+    {
+        callback(false, results, "The web search returned no results.");
+        return;
+    }
+    callback(true, results, "");
 }
