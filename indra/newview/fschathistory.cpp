@@ -1553,15 +1553,31 @@ void FSChatHistory::translateMessageAtCursor()
     {
         return;
     }
+    requestTranslation(from, text, original_line, false);
+}
+
+void FSChatHistory::requestTranslation(const std::string& from, const std::string& text, const std::string& original_line, bool automatic)
+{
     mTranslatedLines.insert(original_line);
 
     LLHandle<LLView> handle = getHandle();
-    FSAIWriter::translate(text, [handle, from, original_line](bool success, const std::string& translation, const std::string& error)
+    FSAIWriter::translate(text, automatic, [handle, from, original_line, automatic](bool success, const std::string& translation, const std::string& error)
     {
         FSChatHistory* self = dynamic_cast<FSChatHistory*>(handle.get());
         if (!self)
         {
             return; // chat window closed meanwhile
+        }
+        if (automatic && (!success || translation.empty()))
+        {
+            // Already in the target language, or the server is unavailable:
+            // stay silent in automatic mode (the line can still be
+            // translated manually).
+            if (!success)
+            {
+                self->mTranslatedLines.erase(original_line);
+            }
+            return;
         }
 
         // Same font and size as regular chat text, in italics.
@@ -1627,7 +1643,62 @@ void FSChatHistory::translateMessageAtCursor()
 }
 // </FS:Perf>
 
+// <FS:Perf> appendMessage() now also triggers automatic AI translation.
 void FSChatHistory::appendMessage(const LLChat& chat, const LLSD &args, const LLStyle::Params& input_append_params)
+{
+    appendMessageImpl(chat, args, input_append_params);
+    autoTranslate(chat, args);
+}
+
+void FSChatHistory::autoTranslate(const LLChat& chat, const LLSD& args)
+{
+    static LLCachedControl<bool> auto_translate(gSavedSettings, "FSAIWriterAutoTranslate", false);
+    if (!auto_translate
+        || chat.mSourceType != CHAT_SOURCE_AGENT                  // people only: no system notices, no object spam
+        || chat.mFromID == gAgent.getID()                         // not my own messages
+        || chat.mMuted
+        || chat.mChatStyle == CHAT_STYLE_HISTORY                  // not history loaded from the log
+        || chat.mChatStyle == CHAT_STYLE_SERVER_HISTORY
+        || (args.has("conversation_log") && args["conversation_log"].asBoolean()))
+    {
+        return;
+    }
+
+    // Only bother the AI when there are actual words to translate.
+    std::string text = chat.mText;
+    LLStringUtil::trim(text);
+    S32 letters = 0;
+    for (const llwchar c : utf8str_to_wstring(text))
+    {
+        letters += iswalpha((wint_t)c) ? 1 : 0;
+    }
+    if (letters < 2)
+    {
+        return;
+    }
+
+    // The message was just appended: it is the last line of the history.
+    const LLWString& wtext = getWText();
+    S32 end = (S32)wtext.size();
+    while (end > 0 && wtext[end - 1] == '\n')
+    {
+        --end;
+    }
+    S32 start = end;
+    while (start > 0 && wtext[start - 1] != '\n')
+    {
+        --start;
+    }
+    const std::string line = wstring_to_utf8str(wtext.substr(start, end - start));
+    if (line.empty() || line.find(chat.mText) == std::string::npos || !isTranslatableLine(line))
+    {
+        return;
+    }
+    requestTranslation(chat.mFromName, chat.mText, line, true);
+}
+// </FS:Perf>
+
+void FSChatHistory::appendMessageImpl(const LLChat& chat, const LLSD &args, const LLStyle::Params& input_append_params)
 {
     LL_RECORD_BLOCK_TIME(FTM_APPEND_MESSAGE);
     // Ansa: FIRE-12754: Hack around a weird issue where the doc size magically increases by 1px

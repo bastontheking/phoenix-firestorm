@@ -38,6 +38,7 @@
 
 class FSChatHistory;
 class LLChatEntry;
+class FSAIChatAssist; // <FS:Perf>
 class LLComboBox;
 class LLLayoutStack;
 class LLLayoutPanel;
@@ -142,6 +143,7 @@ private:
     FSChatHistory* mChatHistory;
     FSChatHistory* mChatHistoryMuted;
     LLChatEntry*   mInputEditor;
+    std::unique_ptr<FSAIChatAssist> mAIChatAssist; // <FS:Perf>
 
     // chat type selector and send chat buttons
     LLButton*             mEmojiRecentPanelToggleBtn;

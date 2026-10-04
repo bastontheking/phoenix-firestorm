@@ -1,6 +1,6 @@
 /**
  * @file fsfloateraiwriter.h
- * @brief Floater showing AI suggestions for the message being typed in chat
+ * @brief Settings floater for the AI chat assistant (server, model, translation)
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Phoenix Firestorm Viewer Source Code
@@ -26,13 +26,9 @@
 #define FS_FLOATERAIWRITER_H
 
 #include "llfloater.h"
-#include "llhandle.h"
 
-class LLButton;
 class LLComboBox;
-class LLScrollListCtrl;
 class LLTextBox;
-class LLTextEditor;
 
 class FSFloaterAIWriter : public LLFloater
 {
@@ -42,30 +38,13 @@ public:
 
     bool postBuild() override;
 
-    // Open the floater for the given chat input and immediately ask the
-    // AI for suggestions on its current text.
-    static void showFor(LLTextEditor* chat_input);
-
 private:
-    void setTarget(LLTextEditor* chat_input);
-    void requestSuggestions(bool more_creative);
-    void onSuggestionSelected();
-    void onUse();
     void onFetchModels();
-    void setBusy(bool busy, const std::string& status);
+    void onTest();
+    void setStatus(const std::string& status);
 
-    LLHandle<LLView>  mTarget;
-    std::string       mOriginal;
-    U32               mRequestId = 0;
-
-    LLComboBox*       mStyleCombo = nullptr;
-    LLTextEditor*     mOriginalText = nullptr;
-    LLScrollListCtrl* mSuggestionsList = nullptr;
-    LLTextEditor*     mResultText = nullptr;
-    LLTextBox*        mStatusText = nullptr;
-    LLButton*         mUseBtn = nullptr;
-    LLButton*         mRetryBtn = nullptr;
-    LLComboBox*       mModelCombo = nullptr;
+    LLComboBox* mModelCombo = nullptr;
+    LLTextBox*  mStatusText = nullptr;
 };
 
 #endif // FS_FLOATERAIWRITER_H

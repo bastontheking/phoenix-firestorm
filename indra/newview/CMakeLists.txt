@@ -100,6 +100,7 @@ set(viewer_SOURCE_FILES
     fsprimfeedauth.cpp
     exogroupmutelist.cpp
     floatermedialists.cpp
+    fsaichatassist.cpp
     fsaiwriter.cpp
     fsareasearch.cpp
     fsareasearchmenu.cpp
@@ -969,6 +970,7 @@ set(viewer_HEADER_FILES
     fsprimfeedauth.h
     exogroupmutelist.h
     floatermedialists.h
+    fsaichatassist.h
     fsaiwriter.h
     fsareasearch.h
     fsareasearchmenu.h

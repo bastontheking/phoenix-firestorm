@@ -3385,4 +3385,7 @@ Your current position: [AVATAR_POS]
 
   <!-- <FS:TJ> Launch new instance option from macOS dock> -->
   <string name="FSMacOSNewViewerInstance">New Viewer Instance</string>
+  <string name="AIWriterThinking">Asking the AI...</string>
+  <string name="AIWriterPickOne">Click a suggestion to put it in the chat box.</string>
+  <string name="AIWriterTypeFirst">Type a message first, then pick a style.</string>
 </strings>

@@ -44,6 +44,7 @@ class FSPanelChatControlPanel;
 class LLAvatarName;
 class LLButton;     // support sysinfo button -Zi
 class LLChatEntry;
+class FSAIChatAssist; // <FS:Perf>
 class LLInventoryCategory;
 class LLInventoryItem;
 class LLLayoutPanel;
@@ -259,6 +260,7 @@ private:
     LLUUID mOtherParticipantUUID;
     FSChatHistory* mChatHistory;
     LLChatEntry* mInputEditor;
+    std::unique_ptr<FSAIChatAssist> mAIChatAssist; // <FS:Perf>
     LLLayoutPanel* mChatLayoutPanel;
     LLLayoutStack* mInputPanels;
     LLLayoutPanel* mUnreadMessagesNotificationPanel;

@@ -612,6 +612,55 @@
           </text>
         </layout_panel>
         <layout_panel
+          auto_resize="false"
+          user_resize="false"
+          visible="false"
+          height="84"
+          name="ai_suggestions_layout_panel">
+          <text
+           follows="left|top|right"
+           layout="topleft"
+           left="4"
+           top="2"
+           right="-60"
+           height="14"
+           use_ellipses="true"
+           text_color="LtGray_50"
+           name="ai_status_text" />
+          <scroll_list
+           follows="all"
+           layout="topleft"
+           left="4"
+           top="17"
+           right="-60"
+           bottom="-2"
+           draw_heading="false"
+           multi_select="false"
+           tool_tip="Click a suggestion to put it in the chat box (it is not sent automatically)"
+           name="ai_suggestions_list">
+            <scroll_list.columns name="text" relative_width="1" />
+          </scroll_list>
+          <button
+           follows="right|top"
+           layout="topleft"
+           right="-4"
+           top="17"
+           height="22"
+           width="52"
+           label="Again"
+           tool_tip="Ask for other, more creative suggestions"
+           name="ai_retry_btn" />
+          <button
+           follows="right|top"
+           layout="topleft"
+           right="-4"
+           top_pad="4"
+           height="22"
+           width="52"
+           label="Close"
+           name="ai_close_btn" />
+        </layout_panel>
+        <layout_panel
           tab_group="3"
           top_delta="0"
           height="26"
@@ -655,20 +704,48 @@
               auto_resize="false"
               user_resize="false"
               name="ai_writer_layout_panel"
-              width="31">
+              width="196">
+              <combo_box
+               follows="right|bottom"
+               bottom="-1"
+               height="23"
+               width="62"
+               left="1"
+               control_name="FSAIWriterLanguage"
+               tool_tip="Language the AI writes the suggestions in"
+               name="ai_language_combo">
+                <combo_box.item label="PT-BR" name="pt" value="pt" />
+                <combo_box.item label="EN" name="en" value="en" />
+              </combo_box>
+              <combo_box
+               follows="right|bottom"
+               bottom="-1"
+               height="23"
+               width="102"
+               left_pad="2"
+               control_name="FSAIWriterStyle"
+               tool_tip="AI: pick a style to get suggestions for what you typed"
+               name="ai_style_combo">
+                <combo_box.item label="Nicer" name="nicer" value="nicer" />
+                <combo_box.item label="Formal" name="formal" value="formal" />
+                <combo_box.item label="Casual" name="casual" value="casual" />
+                <combo_box.item label="Romantic" name="romantic" value="romantic" />
+                <combo_box.item label="Funny" name="funny" value="funny" />
+                <combo_box.item label="Fix only" name="fix" value="fix" />
+              </combo_box>
               <button
                follows="right|bottom"
                bottom="-1"
-               height="24"
-               width="28"
-               left="1"
+               height="23"
+               width="26"
+               left_pad="2"
                image_hover_unselected="Toolbar_Middle_Over"
                image_selected="Toolbar_Middle_Selected"
                image_unselected="Toolbar_Middle_Off"
-               label="AI"
-               name="ai_writer_btn"
-               tool_tip="Improve this message with your AI (shows suggestions, nothing is sent automatically)"
-              />
+               image_overlay="Icon_Gear_Foreground"
+               label=""
+               tool_tip="AI server settings"
+               name="ai_settings_btn" />
             </layout_panel>
             <layout_panel
               visibility_control="FSShowEmojiButton"

@@ -172,6 +172,9 @@ class FSChatHistory : public LLTextEditor   // <FS:Zi> FIRE-8600: TAB out of cha
         std::deque<RecentMessage> mRecentMessages;
         bool findMessageAtCursor(std::string& from, std::string& text, std::string* line = nullptr) const;
         bool isTranslatableLine(const std::string& line) const;
+        void requestTranslation(const std::string& from, const std::string& text, const std::string& original_line, bool automatic);
+        void autoTranslate(const LLChat& chat, const LLSD& args);
+        void appendMessageImpl(const LLChat& chat, const LLSD& args, const LLStyle::Params& input_append_params);
         std::set<std::string> mTranslatedLines; // lines already translated (or in flight)
 
     // <FS_Zi> FIRE-8602: Typing in chat history focuses chat input line

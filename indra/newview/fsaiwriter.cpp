@@ -36,6 +36,7 @@
 namespace
 {
     constexpr size_t MAX_SUGGESTIONS = 3;
+    const std::string SAME_MARKER = "##SAME##";
 
     std::string trim(const std::string& in)
     {
@@ -152,7 +153,7 @@ namespace
 // static
 const std::vector<std::string>& FSAIWriter::getStyleKeys()
 {
-    static const std::vector<std::string> keys{ "nicer", "formal", "casual", "romantic", "funny", "fix", "to_en", "to_pt" };
+    static const std::vector<std::string> keys{ "nicer", "formal", "casual", "romantic", "funny", "fix" };
     return keys;
 }
 
@@ -164,8 +165,6 @@ std::string FSAIWriter::getStyleInstruction(const std::string& style)
     if (style == "romantic") return "Rewrite it in a sweet, charming and romantic way, without being over the top.";
     if (style == "funny")    return "Rewrite it in a witty, playful and funny way.";
     if (style == "fix")      return "Only fix spelling, grammar, accents and punctuation. Keep the wording and tone as close to the original as possible.";
-    if (style == "to_en")    return "Translate it into natural, fluent English, as a native speaker would write it in a chat.";
-    if (style == "to_pt")    return "Translate it into natural, fluent Brazilian Portuguese, as a native speaker would write it in a chat.";
     return "Rewrite it so it reads more beautifully, clearly and naturally, with correct spelling and grammar.";
 }
 
@@ -261,10 +260,10 @@ std::vector<std::string> FSAIWriter::parseSuggestions(const std::string& raw_con
 }
 
 // static
-void FSAIWriter::rewrite(const std::string& text, const std::string& style, bool more_creative, rewrite_callback_t callback)
+void FSAIWriter::rewrite(const std::string& text, const std::string& style, const std::string& language, bool more_creative, rewrite_callback_t callback)
 {
     LLCoros::instance().launch("FSAIWriter::rewriteCoro",
-        [text, style, more_creative, callback]() { rewriteCoro(text, style, more_creative, callback); });
+        [text, style, language, more_creative, callback]() { rewriteCoro(text, style, language, more_creative, callback); });
 }
 
 // static
@@ -367,15 +366,17 @@ bool FSAIWriter::chatCompletion(const std::string& system_prompt, const std::str
 }
 
 // static
-void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_creative, rewrite_callback_t callback)
+void FSAIWriter::rewriteCoro(std::string text, std::string style, std::string language, bool more_creative, rewrite_callback_t callback)
 {
     Result res;
+    const std::string target_language = (language == "en") ? "English" : "Brazilian Portuguese";
     const std::string system_prompt =
         "You are a writing assistant for chat messages in the virtual world Second Life. "
         "The user gives you a message they are about to send. " + getStyleInstruction(style) + " "
-        "Keep the original meaning, keep it short like a chat message, keep names, emojis and "
-        "Second Life terms unchanged. Always answer in the same language as the user's message "
-        "(a message in Portuguese gets Portuguese versions) unless you were asked to translate. "
+        "Write every version in natural, fluent " + target_language + ", the way a native speaker would "
+        "write it in a chat; if the message is in another language, translate it. "
+        "Keep the original meaning, keep it short like a chat message, and keep names, emojis and "
+        "Second Life terms unchanged. "
         "Reply with exactly three alternative versions, one per line, with no numbering, no quotes "
         "and no explanations.";
 
@@ -393,13 +394,13 @@ void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_crea
 }
 
 // static
-void FSAIWriter::translate(const std::string& text, translate_callback_t callback)
+void FSAIWriter::translate(const std::string& text, bool automatic, translate_callback_t callback)
 {
-    LLCoros::instance().launch("FSAIWriter::translateCoro", [text, callback]() { translateCoro(text, callback); });
+    LLCoros::instance().launch("FSAIWriter::translateCoro", [text, automatic, callback]() { translateCoro(text, automatic, callback); });
 }
 
 // static
-void FSAIWriter::translateCoro(std::string text, translate_callback_t callback)
+void FSAIWriter::translateCoro(std::string text, bool automatic, translate_callback_t callback)
 {
     std::string target = trim(gSavedSettings.getString("FSAIWriterTranslateTo"));
     if (target.empty())
@@ -409,12 +410,28 @@ void FSAIWriter::translateCoro(std::string text, translate_callback_t callback)
     const std::string system_prompt =
         "You translate chat messages from the virtual world Second Life. Translate the user's message into natural, "
         "fluent " + target + ", the way a native speaker would write it in a chat. Keep names, emojis, slang meaning "
-        "and Second Life terms. If the message is already in " + target + ", return it unchanged. "
+        "and Second Life terms. " +
+        (automatic
+            ? "If the message is already in " + target + ", or has nothing to translate (only names, numbers, emojis "
+              "or links), reply with exactly " + SAME_MARKER + " and nothing else. "
+            : "If the message is already in " + target + ", return it unchanged. ") +
         "Reply with the translation only: no quotes, no notes, no explanations.";
 
     std::string content;
     std::string error;
-    const bool success = chatCompletion(system_prompt, text, 0.2f, content, error);
+    bool success = chatCompletion(system_prompt, text, 0.2f, content, error);
+    if (success && automatic)
+    {
+        std::string normalized = content;
+        LLStringUtil::trim(normalized);
+        std::string original = text;
+        LLStringUtil::trim(original);
+        if (normalized.find(SAME_MARKER) != std::string::npos
+            || LLStringUtil::compareInsensitive(normalized, original) == 0)
+        {
+            content.clear(); // already in the target language
+        }
+    }
     callback(success, content, error);
 }
 
