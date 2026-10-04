@@ -55,6 +55,9 @@ public:
     FSAIChatAssist(LLPanel* owner, LLTextEditor* input);
     ~FSAIChatAssist();
 
+    // The chat message was sent: hide the suggestions and forget the text.
+    void onMessageSent();
+
 private:
     void request(bool more_creative);
     void onSuggestionPicked();

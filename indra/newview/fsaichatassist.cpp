@@ -95,6 +95,12 @@ FSAIChatAssist::~FSAIChatAssist()
     mAlive.reset();
 }
 
+void FSAIChatAssist::onMessageSent()
+{
+    showStrip(false);
+    mRequestedText.clear();
+}
+
 void FSAIChatAssist::showStrip(bool show)
 {
     if (mStripPanel)

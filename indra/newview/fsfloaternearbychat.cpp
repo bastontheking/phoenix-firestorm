@@ -850,6 +850,10 @@ void FSFloaterNearbyChat::reshapeChatLayoutPanel()
 
 void FSFloaterNearbyChat::sendChat( EChatType type )
 {
+    if (mAIChatAssist)
+    {
+        mAIChatAssist->onMessageSent(); // <FS:Perf> close the AI suggestions strip
+    }
     if (mInputEditor)
     {
         LLWString text = mInputEditor->getConvertedText();

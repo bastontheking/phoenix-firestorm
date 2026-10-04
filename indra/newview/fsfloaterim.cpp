@@ -367,6 +367,10 @@ void FSFloaterIM::onVisibilityChange(bool new_visibility)
 
 void FSFloaterIM::sendMsgFromInputEditor(EChatType type)
 {
+    if (mAIChatAssist)
+    {
+        mAIChatAssist->onMessageSent(); // <FS:Perf> close the AI suggestions strip
+    }
     if (gAgent.isGodlike()
         || (mDialog != IM_NOTHING_SPECIAL)
         || !mOtherParticipantUUID.isNull())

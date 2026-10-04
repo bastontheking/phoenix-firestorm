@@ -704,7 +704,7 @@
               auto_resize="false"
               user_resize="false"
               name="ai_writer_layout_panel"
-              width="206">
+              width="196">
               <combo_box
                follows="right|bottom"
                bottom="-1"
@@ -721,7 +721,7 @@
                follows="right|bottom"
                bottom="-1"
                height="23"
-               width="102"
+               width="92"
                left_pad="2"
                control_name="FSAIWriterStyle"
                tool_tip="AI: pick a style to get suggestions for what you typed"
