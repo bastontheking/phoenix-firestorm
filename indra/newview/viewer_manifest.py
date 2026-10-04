@@ -53,6 +53,9 @@ viewer_dir = os.path.dirname(__file__)
 # indra.util.llmanifest under their system Python!
 sys.path.insert(0, os.path.join(viewer_dir, os.pardir, "lib", "python"))
 from indra.util.llmanifest import LLManifest, main, path_ancestors, CHANNEL_VENDOR_BASE, RELEASE_CHANNEL, ManifestError, MissingError
+
+# <FS:Perf> where the unofficial "Perf + AI" fork publishes its builds
+FORK_RELEASES_URL = 'https://github.com/bastontheking/phoenix-firestorm/releases/latest'
 # <FS:Beq> try to work around weird Mac build issue that seems to find the wrong python
 #import llsd
 try:
@@ -966,7 +969,14 @@ class Windows_x86_64_Manifest(ViewerManifest):
         elif self.channel_type() == 'nightly':
             return 'https://www.firestormviewer.org/firestorm-nightly-build-downloads'
         else:
-            return '<NO-URL>'
+            # <FS:Perf> unofficial "Perf + AI" fork builds: point to the fork's releases
+            return FORK_RELEASES_URL
+
+    def dl_url_legacy_from_channel(self):
+        # <FS:Perf> official pages have a "-legacy-cpus" variant; the fork
+        # publishes both builds on the same releases page
+        url = self.dl_url_from_channel()
+        return url if url == FORK_RELEASES_URL else url + '-legacy-cpus'
         
 
     def package_finish(self):
@@ -1109,7 +1119,8 @@ class Windows_x86_64_Manifest(ViewerManifest):
             'flags':'',
             'app_name':self.app_name(),
             'app_name_oneword':self.app_name_oneword(),
-            'dl_url':self.dl_url_from_channel()
+            'dl_url':self.dl_url_from_channel(),
+            'dl_url_legacy':self.dl_url_legacy_from_channel()
             }
 
         substitution_strings = self.fs_splice_grid_substitution_strings( substitution_strings ) #<FS:ND/> Add grid args
@@ -1145,6 +1156,7 @@ class Windows_x86_64_Manifest(ViewerManifest):
             !define INSTNAME   "%(app_name_oneword)s"
             !define SHORTCUT   "%(app_name)s"
             !define DL_URL   "%(dl_url)s"
+            !define DL_URL_LEGACY   "%(dl_url_legacy)s"
             !define URLNAME   "secondlife"
             !define IS64BIT   "%(is64bit)d"
             !define ISAVX2   "%(isavx2)d"
