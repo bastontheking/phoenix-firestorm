@@ -36,7 +36,9 @@
 #include "llscrolllistitem.h"
 #include "lltextbox.h"
 #include "lltexteditor.h"
+#include "lleventtimer.h"
 #include "lltrans.h"
+#include "llviewercontrol.h"
 
 FSAIChatAssist::FSAIChatAssist(LLPanel* owner, LLTextEditor* input)
 :   mInput(input),
@@ -53,21 +55,24 @@ FSAIChatAssist::FSAIChatAssist(LLPanel* owner, LLTextEditor* input)
     mSuggestionsList = owner->findChild<LLScrollListCtrl>("ai_suggestions_list");
     mStatusText = owner->findChild<LLTextBox>("ai_status_text");
 
+    // Changing style or language refreshes the suggestions right away.
+    auto refresh = [this](LLUICtrl*, const LLSD&)
+    {
+        mRequestedText.clear();
+        mPickedText.clear();
+        poll();
+        if (!mLastSeenText.empty())
+        {
+            request(false);
+        }
+    };
     if (mStyleCombo)
     {
-        // Choosing a style is the action: it asks for suggestions right away.
-        mStyleCombo->setCommitCallback([this](LLUICtrl*, const LLSD&) { request(false); });
+        mStyleCombo->setCommitCallback(refresh);
     }
     if (mLanguageCombo)
     {
-        // Switching language while suggestions are shown refreshes them.
-        mLanguageCombo->setCommitCallback([this](LLUICtrl*, const LLSD&)
-        {
-            if (mStripPanel && mStripPanel->getVisible())
-            {
-                request(false);
-            }
-        });
+        mLanguageCombo->setCommitCallback(refresh);
     }
     if (mSuggestionsList)
     {
@@ -78,20 +83,20 @@ FSAIChatAssist::FSAIChatAssist(LLPanel* owner, LLTextEditor* input)
     {
         btn->setClickedCallback([](LLUICtrl*, const LLSD&) { LLFloaterReg::showInstance("fs_ai_writer"); });
     }
-    if (LLButton* btn = owner->findChild<LLButton>("ai_retry_btn"))
-    {
-        btn->setClickedCallback([this](LLUICtrl*, const LLSD&) { request(true); });
-    }
-    if (LLButton* btn = owner->findChild<LLButton>("ai_close_btn"))
-    {
-        btn->setClickedCallback([this](LLUICtrl*, const LLSD&) { showStrip(false); });
-    }
-
     showStrip(false);
+
+    if (mSuggestionsList)
+    {
+        // Cheap check of the input a few times per second; the AI is only
+        // asked once the text has stopped changing for a moment.
+        mPollTimer = LLEventTimer::run_every(0.25f, [this]() { poll(); });
+    }
 }
 
 FSAIChatAssist::~FSAIChatAssist()
 {
+    // run_every() timers are never deleted by LLEventTimer itself
+    delete mPollTimer;
     mAlive.reset();
 }
 
@@ -99,6 +104,54 @@ void FSAIChatAssist::onMessageSent()
 {
     showStrip(false);
     mRequestedText.clear();
+    mPickedText.clear();
+}
+
+void FSAIChatAssist::poll()
+{
+    static LLCachedControl<bool> auto_suggest(gSavedSettings, "FSAIWriterAutoSuggest", true);
+    static LLCachedControl<F32> delay(gSavedSettings, "FSAIWriterAutoSuggestDelay", 1.0f);
+    if (!mInput)
+    {
+        return;
+    }
+
+    std::string text = mInput->getText();
+    LLStringUtil::trim(text);
+    if (text != mLastSeenText)
+    {
+        mLastSeenText = text;
+        mSinceChange.reset();
+    }
+
+    // Nothing typed (or feature off, or chat window hidden): no strip.
+    if (text.empty() || !auto_suggest || !mInput->isInVisibleChain())
+    {
+        if (mStripPanel && mStripPanel->getVisible())
+        {
+            showStrip(false);
+        }
+        mRequestedText.clear();
+        mPickedText.clear();
+        return;
+    }
+
+    // Already handled, the user picked a suggestion, chat commands, or not
+    // enough words yet.
+    if (text == mRequestedText || text == mPickedText || text[0] == '/')
+    {
+        return;
+    }
+    S32 letters = 0;
+    for (const llwchar c : utf8str_to_wstring(text))
+    {
+        letters += iswalpha((wint_t)c) ? 1 : 0;
+    }
+    if (letters < 2 || mSinceChange.getElapsedTimeF32() < (F32)delay)
+    {
+        return;
+    }
+    request(false);
 }
 
 void FSAIChatAssist::showStrip(bool show)
@@ -141,13 +194,12 @@ void FSAIChatAssist::request(bool more_creative)
         text = mRequestedText;
     }
 
-    showStrip(true);
-    mSuggestionsList->deleteAllItems();
     if (text.empty())
     {
-        setStatus(LLTrans::getString("AIWriterTypeFirst"));
+        showStrip(false);
         return;
     }
+    showStrip(true);
 
     mRequestedText = text;
     const unsigned int request_id = ++mRequestId;
@@ -168,6 +220,7 @@ void FSAIChatAssist::request(bool more_creative)
             setStatus(result.mError);
             return;
         }
+        mSuggestionsList->deleteAllItems();
         for (const std::string& suggestion : result.mSuggestions)
         {
             LLSD row;
@@ -188,6 +241,8 @@ void FSAIChatAssist::onSuggestionPicked()
         return;
     }
     // Put it in the input only; the user still decides whether to send.
+    mPickedText = item->getValue().asString();
+    LLStringUtil::trim(mPickedText);
     mInput->setText(item->getValue().asString());
     mInput->endOfDoc();
     mInput->setFocus(true);

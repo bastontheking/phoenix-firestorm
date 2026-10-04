@@ -622,7 +622,7 @@
            layout="topleft"
            left="4"
            top="2"
-           right="-60"
+           right="-4"
            height="14"
            use_ellipses="true"
            text_color="LtGray_50"
@@ -632,7 +632,7 @@
            layout="topleft"
            left="4"
            top="17"
-           right="-60"
+           right="-4"
            bottom="-2"
            draw_heading="false"
            multi_select="false"
@@ -640,25 +640,6 @@
            name="ai_suggestions_list">
             <scroll_list.columns name="text" relative_width="1" />
           </scroll_list>
-          <button
-           follows="right|top"
-           layout="topleft"
-           right="-4"
-           top="17"
-           height="22"
-           width="52"
-           label="Again"
-           tool_tip="Ask for other, more creative suggestions"
-           name="ai_retry_btn" />
-          <button
-           follows="right|top"
-           layout="topleft"
-           right="-4"
-           top_pad="4"
-           height="22"
-           width="52"
-           label="Close"
-           name="ai_close_btn" />
         </layout_panel>
         <layout_panel
           tab_group="3"
