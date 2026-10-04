@@ -295,6 +295,9 @@ void FSFloaterIMContainer::addFloater(LLFloater* floaterp,
         mTabContainer->lockTabs(num_locked_tabs + 1);
         floaterp->setCanClose(false);
         floaterp->setCanTearOff(false);
+        // robot icon on the right of the tab, like the voice icon on nearby chat
+        static LLUIColor icon_color = LLUIColorTable::instance().getColor("VoiceConnectedColor", LLColor4(0.55f, 0.9f, 0.6f, 1.f));
+        mTabContainer->setTabImage(floaterp, "AI_Chatbot_Tab", LLFontGL::RIGHT, icon_color.get(), icon_color.get());
         return;
         // </FS:Perf>
     }
