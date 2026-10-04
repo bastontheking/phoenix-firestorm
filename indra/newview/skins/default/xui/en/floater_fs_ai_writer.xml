@@ -162,7 +162,7 @@
    height="22"
    width="120"
    label="Clear history"
-   tool_tip="Erase the ChatBot (History) conversation"
+   tool_tip="Erase the ChatBot conversation"
    name="chatbot_clear_btn" />
   <check_box
    follows="left|top"

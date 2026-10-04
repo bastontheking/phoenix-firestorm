@@ -1,6 +1,6 @@
 /**
  * @file fsfloateraichatbot.h
- * @brief Chat bot tabs in the conversations window, backed by the user's own LLM
+ * @brief ChatBot tab in the conversations window, backed by the user's own LLM
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Phoenix Firestorm Viewer Source Code
@@ -28,28 +28,24 @@
 #include "llfloater.h"
 
 class LLButton;
+class LLComboBox;
 class LLLineEditor;
 class LLTextBox;
 class LLTextEditor;
 
 /**
- * A private conversation with the user's LLM, shown as tabs right after
+ * A private conversation with the user's LLM, shown as a tab right after
  * Nearby Chat. Nothing typed here goes to Second Life.
  *
- * Two instances share this class:
- *  - "fs_ai_chatbot": every message is answered on its own, nothing is
- *    remembered;
- *  - "fs_ai_chatbot_history": the conversation is kept per account in
- *    ai_chatbot_history.xml and the last FSAIChatbotHistoryLength entries
- *    are sent as context.
+ * The conversation is kept per account in ai_chatbot_history.xml and the
+ * last FSAIChatbotHistoryLength entries are sent as context. The send
+ * button can be switched to "Send w/o history": a one-off question that
+ * neither reads nor changes the conversation.
  */
 class FSFloaterAIChatbot : public LLFloater
 {
 public:
-    static constexpr const char* SINGLE_NAME = "fs_ai_chatbot";
-    static constexpr const char* HISTORY_NAME = "fs_ai_chatbot_history";
-
-    FSFloaterAIChatbot(const LLSD& key, bool use_history = false);
+    FSFloaterAIChatbot(const LLSD& key);
     ~FSFloaterAIChatbot() override = default;
 
     bool postBuild() override;
@@ -64,13 +60,12 @@ private:
         std::string mContent;
     };
 
-    bool usesHistory() const { return mUseHistory; }
     void onSend();
     void onClear();
-    void askModel(const std::string& question, const std::string& web_context, const std::string& sources);
-    void appendEntry(const Entry& entry);
+    void onSendModeChanged();
+    void askModel(const std::string& question, const std::string& web_context, const std::string& sources, bool one_off);
+    void appendEntry(const Entry& entry, bool one_off = false);
     void appendLine(const std::string& text, const LLColor4& color, bool italic = false);
-    void showWelcome();
     void setBusy(bool busy, const std::string& status = LLStringUtil::null);
     void loadHistory();
     void saveHistory() const;
@@ -78,19 +73,12 @@ private:
 
     std::vector<Entry> mHistory;
     bool               mBusy = false;
-    const bool         mUseHistory;
 
     LLTextEditor*   mChatHistory = nullptr;
     LLLineEditor*   mInput = nullptr;
     LLButton*       mSendBtn = nullptr;
+    LLComboBox*     mSendMode = nullptr;
     LLTextBox*      mStatusText = nullptr;
-};
-
-// The remembered conversation ("fs_ai_chatbot_history").
-class FSFloaterAIChatbotHistory : public FSFloaterAIChatbot
-{
-public:
-    FSFloaterAIChatbotHistory(const LLSD& key) : FSFloaterAIChatbot(key, true) {}
 };
 
 #endif // FS_FLOATERAICHATBOT_H

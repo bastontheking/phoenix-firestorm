@@ -1,6 +1,6 @@
 /**
  * @file fsfloateraichatbot.cpp
- * @brief Chat bot tabs in the conversations window, backed by the user's own LLM
+ * @brief ChatBot tab in the conversations window, backed by the user's own LLM
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Phoenix Firestorm Viewer Source Code
@@ -28,6 +28,7 @@
 
 #include "fsaiwriter.h"
 #include "llbutton.h"
+#include "llcombobox.h"
 #include "lldir.h"
 #include "llfile.h"
 #include "llfloaterreg.h"
@@ -53,9 +54,8 @@ namespace
     }
 }
 
-FSFloaterAIChatbot::FSFloaterAIChatbot(const LLSD& key, bool use_history)
-:   LLFloater(key),
-    mUseHistory(use_history)
+FSFloaterAIChatbot::FSFloaterAIChatbot(const LLSD& key)
+:   LLFloater(key)
 {
 }
 
@@ -64,21 +64,27 @@ bool FSFloaterAIChatbot::postBuild()
     mChatHistory = getChild<LLTextEditor>("chatbot_history");
     mInput = getChild<LLLineEditor>("chatbot_input");
     mSendBtn = getChild<LLButton>("chatbot_send_btn");
+    mSendMode = getChild<LLComboBox>("chatbot_send_mode");
     mStatusText = getChild<LLTextBox>("chatbot_status");
-
-    const std::string title = getString(usesHistory() ? "title_history" : "title_single");
-    setTitle(title);
-    setShortTitle(title);
 
     mChatHistory->setReadOnly(true);
     mInput->setCommitOnFocusLost(false);
     mInput->setCommitCallback([this](LLUICtrl*, const LLSD&) { onSend(); });
     mSendBtn->setClickedCallback([this](LLUICtrl*, const LLSD&) { onSend(); });
+    mSendMode->setCommitCallback([this](LLUICtrl*, const LLSD&) { onSendModeChanged(); });
+    getChild<LLButton>("chatbot_clear_btn")->setClickedCallback([this](LLUICtrl*, const LLSD&) { onClear(); });
     getChild<LLButton>("chatbot_settings_btn")->setClickedCallback([](LLUICtrl*, const LLSD&) { LLFloaterReg::showInstance("fs_ai_writer"); });
 
+    onSendModeChanged();
     loadHistory();
     setBusy(false);
     return true;
+}
+
+void FSFloaterAIChatbot::onSendModeChanged()
+{
+    // The visible button shows the selected mode, like the nearby chat Say button.
+    mSendBtn->setLabel(mSendMode->getSelectedItemLabel());
 }
 
 // static
@@ -94,9 +100,9 @@ std::string FSFloaterAIChatbot::historyFile()
 // static
 void FSFloaterAIChatbot::clearSavedHistory()
 {
-    if (FSFloaterAIChatbot* history = LLFloaterReg::findTypedInstance<FSFloaterAIChatbot>(HISTORY_NAME))
+    if (FSFloaterAIChatbot* chatbot = LLFloaterReg::findTypedInstance<FSFloaterAIChatbot>("fs_ai_chatbot"))
     {
-        history->onClear();
+        chatbot->onClear();
         return;
     }
     const std::string file = historyFile();
@@ -109,14 +115,15 @@ void FSFloaterAIChatbot::clearSavedHistory()
 void FSFloaterAIChatbot::loadHistory()
 {
     mHistory.clear();
-    if (usesHistory())
+    const std::string file = historyFile();
+    llifstream in(file.c_str());
+    LLSD data;
+    if (!file.empty() && in.is_open() && LLSDSerialize::fromXML(data, in) > 0 && data.isArray())
     {
-        const std::string file = historyFile();
-        llifstream in(file.c_str());
-        LLSD data;
-        if (!file.empty() && in.is_open() && LLSDSerialize::fromXML(data, in) > 0 && data.isArray())
+        for (const LLSD& item : llsd::inArray(data))
         {
-            for (const LLSD& item : llsd::inArray(data))
+            // entries saved by older builds as "oneoff" are not part of the conversation
+            if (!item["oneoff"].asBoolean())
             {
                 mHistory.push_back({ item["role"].asString(), item["content"].asString() });
             }
@@ -124,7 +131,6 @@ void FSFloaterAIChatbot::loadHistory()
     }
 
     mChatHistory->clear();
-    showWelcome();
     for (const Entry& entry : mHistory)
     {
         appendEntry(entry);
@@ -133,10 +139,6 @@ void FSFloaterAIChatbot::loadHistory()
 
 void FSFloaterAIChatbot::saveHistory() const
 {
-    if (!usesHistory())
-    {
-        return;
-    }
     const std::string file = historyFile();
     if (file.empty())
     {
@@ -158,11 +160,6 @@ void FSFloaterAIChatbot::saveHistory() const
     }
 }
 
-void FSFloaterAIChatbot::showWelcome()
-{
-    appendLine(getString(usesHistory() ? "welcome_history" : "welcome_single"), LLColor4::grey3, true);
-}
-
 void FSFloaterAIChatbot::appendLine(const std::string& text, const LLColor4& color, bool italic)
 {
     LLFontGL* fontp = LLViewerChat::getChatFont();
@@ -179,16 +176,17 @@ void FSFloaterAIChatbot::appendLine(const std::string& text, const LLColor4& col
     mChatHistory->setCursorAndScrollToEnd();
 }
 
-void FSFloaterAIChatbot::appendEntry(const Entry& entry)
+void FSFloaterAIChatbot::appendEntry(const Entry& entry, bool one_off)
 {
     static LLCachedControl<LLColor4> bot_color(gSavedSettings, "FSAIWriterTranslatorColor", LLColor4(0.55f, 0.9f, 0.6f, 1.f));
+    // One-off exchanges are shown in italics: they are not part of the conversation.
     if (entry.mRole == "user")
     {
-        appendLine(getString("you") + ": " + entry.mContent, LLColor4::white);
+        appendLine(getString(one_off ? "you_oneoff" : "you") + ": " + entry.mContent, LLColor4::white, one_off);
     }
     else
     {
-        appendLine(getString("bot") + ": " + entry.mContent, (LLColor4)bot_color);
+        appendLine(getString("bot") + ": " + entry.mContent, (LLColor4)bot_color, one_off);
     }
 }
 
@@ -219,21 +217,25 @@ void FSFloaterAIChatbot::onSend()
         return;
     }
 
+    const bool one_off = mSendMode->getValue().asString() == "oneoff";
     Entry user_entry{ "user", question };
-    mHistory.push_back(user_entry);
-    appendEntry(user_entry);
-    saveHistory();
+    appendEntry(user_entry, one_off);
+    if (!one_off)
+    {
+        mHistory.push_back(user_entry);
+        saveHistory();
+    }
 
     static LLCachedControl<bool> web_search(gSavedSettings, "FSAIChatbotWebSearch", false);
     if (!web_search)
     {
-        askModel(question, LLStringUtil::null, LLStringUtil::null);
+        askModel(question, LLStringUtil::null, LLStringUtil::null, one_off);
         return;
     }
 
     setBusy(true, getString("searching"));
     LLHandle<LLFloater> handle = getHandle();
-    FSAIWriter::webSearch(question, [handle, question](bool success, const std::vector<FSAIWriter::SearchResult>& results, const std::string& error)
+    FSAIWriter::webSearch(question, [handle, question, one_off](bool success, const std::vector<FSAIWriter::SearchResult>& results, const std::string& error)
     {
         FSFloaterAIChatbot* self = static_cast<FSFloaterAIChatbot*>(handle.get());
         if (!self)
@@ -254,13 +256,14 @@ void FSFloaterAIChatbot::onSend()
         {
             self->appendLine(error, LLColor4::grey3, true);
         }
-        self->askModel(question, web_context, sources);
+        self->askModel(question, web_context, sources, one_off);
     });
 }
 
-void FSFloaterAIChatbot::askModel(const std::string& question, const std::string& web_context, const std::string& sources)
+void FSFloaterAIChatbot::askModel(const std::string& question, const std::string& web_context, const std::string& sources, bool one_off)
 {
     static LLCachedControl<U32> history_length(gSavedSettings, "FSAIChatbotHistoryLength", 30);
+    static LLCachedControl<bool> show_sources(gSavedSettings, "FSAIChatbotShowSources", true);
 
     std::vector<FSAIWriter::ChatMessage> messages;
     messages.push_back({ "system",
@@ -268,9 +271,9 @@ void FSFloaterAIChatbot::askModel(const std::string& question, const std::string
         "Answer in the same language the user writes in. Be clear and concise; use short paragraphs "
         "and plain text (no markdown tables)." });
 
-    // Conversation context (history tab only): the latest entries before
-    // the question we are about to add ourselves.
-    if (usesHistory())
+    // Conversation context: the latest entries before this question (which
+    // is already the last history entry). One-off questions get none.
+    if (!one_off && !mHistory.empty())
     {
         std::vector<FSAIWriter::ChatMessage> context;
         for (size_t i = mHistory.size() - 1; i-- > 0 && context.size() < (size_t)(U32)history_length; )
@@ -280,7 +283,6 @@ void FSFloaterAIChatbot::askModel(const std::string& question, const std::string
         messages.insert(messages.end(), context.rbegin(), context.rend());
     }
 
-    static LLCachedControl<bool> show_sources(gSavedSettings, "FSAIChatbotShowSources", true);
     std::string prompt = question;
     if (!web_context.empty())
     {
@@ -290,12 +292,12 @@ void FSFloaterAIChatbot::askModel(const std::string& question, const std::string
                     : "Using these results where relevant (do not mention or number the sources), answer:\n") +
                  question;
     }
-    const std::string shown_sources = show_sources ? sources : std::string();
     messages.push_back({ "user", prompt });
+    const std::string shown_sources = show_sources ? sources : std::string();
 
     setBusy(true, getString("thinking"));
     LLHandle<LLFloater> handle = getHandle();
-    FSAIWriter::chat(messages, [handle, sources = shown_sources](bool success, const std::string& reply, const std::string& error)
+    FSAIWriter::chat(messages, [handle, sources = shown_sources, one_off](bool success, const std::string& reply, const std::string& error)
     {
         FSFloaterAIChatbot* self = static_cast<FSFloaterAIChatbot*>(handle.get());
         if (!self)
@@ -309,13 +311,16 @@ void FSFloaterAIChatbot::askModel(const std::string& question, const std::string
             return;
         }
         Entry bot_entry{ "assistant", tidyReply(reply) };
-        self->mHistory.push_back(bot_entry);
-        self->appendEntry(bot_entry);
+        self->appendEntry(bot_entry, one_off);
         if (!sources.empty())
         {
             self->appendLine(self->getString("sources") + "\n" + sources, LLColor4::grey3, true);
         }
-        self->saveHistory();
+        if (!one_off)
+        {
+            self->mHistory.push_back(bot_entry);
+            self->saveHistory();
+        }
     });
 }
 
@@ -324,6 +329,5 @@ void FSFloaterAIChatbot::onClear()
     mHistory.clear();
     saveHistory();
     mChatHistory->clear();
-    showWelcome();
     setBusy(false, getString("cleared"));
 }

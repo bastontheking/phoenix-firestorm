@@ -638,7 +638,6 @@ void LLViewerFloaterReg::registerFloaters()
     LLFloaterReg::add("flickr", "floater_flickr.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<LLFloaterFlickr>);
     LLFloaterReg::add("primfeed", "floater_primfeed.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FSFloaterPrimfeed>);
     LLFloaterReg::add("fs_ai_chatbot", "floater_fs_ai_chatbot.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FSFloaterAIChatbot>); // <FS:Perf>
-    LLFloaterReg::add("fs_ai_chatbot_history", "floater_fs_ai_chatbot.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FSFloaterAIChatbotHistory>); // <FS:Perf>
     LLFloaterReg::add("fs_ai_writer", "floater_fs_ai_writer.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FSFloaterAIWriter>); // <FS:Perf>
     LLFloaterReg::add("fs_asset_blacklist", "floater_fs_asset_blacklist.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FSFloaterAssetBlacklist>);
     LLFloaterReg::add("fs_avatar_render_settings", "floater_fs_avatar_render_settings.xml", (LLFloaterBuildFunc)&LLFloaterReg::build<FSFloaterAvatarRenderSettings>);

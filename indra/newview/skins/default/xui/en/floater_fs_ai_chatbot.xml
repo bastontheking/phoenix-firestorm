@@ -9,14 +9,11 @@
  height="320"
  width="420"
  min_height="200"
- min_width="320"
+ min_width="360"
  layout="topleft"
  save_rect="true">
-  <floater.string name="title_single">ChatBot</floater.string>
-  <floater.string name="title_history">ChatBot (History)</floater.string>
-  <floater.string name="welcome_single">Ask your AI anything. Each message is answered on its own (no history). Nothing here is sent to Second Life.</floater.string>
-  <floater.string name="welcome_history">Ask your AI anything. This conversation is remembered between sessions; type /clear to erase it. Nothing here is sent to Second Life.</floater.string>
   <floater.string name="you">You</floater.string>
+  <floater.string name="you_oneoff">You (no history)</floater.string>
   <floater.string name="bot">ChatBot</floater.string>
   <floater.string name="thinking">ChatBot is thinking...</floater.string>
   <floater.string name="searching">Searching the web...</floater.string>
@@ -52,7 +49,7 @@
    follows="left|bottom|right"
    layout="topleft"
    left="4"
-   right="-110"
+   right="-226"
    top_pad="2"
    height="23"
    max_length_bytes="4000"
@@ -62,7 +59,7 @@
   <button
    follows="right|bottom"
    layout="topleft"
-   right="-80"
+   right="-196"
    top_delta="0"
    height="23"
    width="26"
@@ -71,15 +68,63 @@
    image_unselected="Toolbar_Middle_Off"
    image_overlay="Icon_Gear_Foreground"
    label=""
-   tool_tip="AI settings (server, web search, clear history)"
+   tool_tip="AI settings (server, internet access, sources)"
    name="chatbot_settings_btn" />
   <button
+   follows="right|bottom"
+   layout="topleft"
+   right="-136"
+   top_delta="0"
+   height="23"
+   width="56"
+   label="Clear"
+   tool_tip="Erase the conversation"
+   name="chatbot_clear_btn" />
+
+  <!-- Makeshift split button (same technique as the nearby chat Say button):
+       the combo picks the send mode, the button on top of it sends. -->
+  <combo_box
    follows="right|bottom"
    layout="topleft"
    right="-4"
    top_delta="0"
    height="23"
-   width="72"
+   width="128"
+   drop_down_button.image_pressed="PushButton_Off"
+   drop_down_button.image_pressed_selected="PushButton_Off"
+   drop_down_button.image_selected="PushButton_Off"
+   drop_down_button.image_unselected="PushButton_Off"
+   drop_down_button.halign="center"
+   list_position="above"
+   control_name="FSAIChatbotSendMode"
+   tool_tip="Send: part of the conversation. Send w/o history: a one-off question that neither reads nor changes the conversation."
+   name="chatbot_send_mode">
+    <combo_box.item label="Send" name="normal" value="normal" />
+    <combo_box.item label="Send w/o history" name="oneoff" value="oneoff" />
+  </combo_box>
+  <button
+   image_unselected="transparent.j2c"
+   image_selected="PushButton_Off"
+   image_pressed="PushButton_Off"
+   image_pressed_selected="transparent.j2c"
+   image_disabled="transparent.j2c"
+   follows="right|bottom"
+   layout="topleft"
+   left_delta="0"
+   top_delta="0"
+   height="23"
+   width="106"
    label="Send"
+   pad_bottom="-22"
    name="chatbot_send_btn" />
+  <icon
+   follows="right|bottom"
+   layout="topleft"
+   left_pad="0"
+   top_delta="1"
+   width="18"
+   height="20"
+   image_name="arrow_up.tga"
+   scale_image="true"
+   name="chatbot_send_mode_arrow" />
 </floater>

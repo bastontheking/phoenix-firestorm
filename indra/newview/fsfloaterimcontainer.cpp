@@ -145,16 +145,13 @@ void FSFloaterIMContainer::initTabs()
             addFloater(floater_chat, true, IM_NOTHING_SPECIAL);
         }
     }
-    // <FS:Perf> AI chat bot tabs: plain, then with history
+    // <FS:Perf> AI chat bot tab
     if (gSavedSettings.getBOOL("FSAIChatbotEnabled"))
     {
-        for (const char* name : { "fs_ai_chatbot", "fs_ai_chatbot_history" })
+        LLFloater* chatbot = LLFloaterReg::getInstance("fs_ai_chatbot");
+        if (chatbot && chatbot->getHost() != this)
         {
-            LLFloater* chatbot = LLFloaterReg::getInstance(name);
-            if (chatbot && chatbot->getHost() != this)
-            {
-                addFloater(chatbot, false, IM_NOTHING_SPECIAL);
-            }
+            addFloater(chatbot, false, IM_NOTHING_SPECIAL);
         }
     }
     // </FS:Perf>
@@ -275,8 +272,8 @@ void FSFloaterIMContainer::addFloater(LLFloater* floaterp,
         return;
     }
 
-    // <FS:Perf> AI chat bots: locked tabs after the existing locked tabs
-    // (contacts, nearby chat, then the chat bots in the order they are added)
+    // <FS:Perf> AI chat bot: locked tab after the existing locked tabs
+    // (contacts, nearby chat)
     if (floaterp->getName() == "fs_ai_chatbot")
     {
         S32 num_locked_tabs = mTabContainer->getNumLockedTabs();
