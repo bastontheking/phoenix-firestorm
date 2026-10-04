@@ -444,6 +444,7 @@ void LLFastTimerView::draw()
 
 void LLFastTimerView::onOpen(const LLSD& key)
 {
+    LL_INFOS("FastTimers") << "Fast Timers floater opened" << LL_ENDL; // <FS:Perf> diagnose unexpected openings
     setPauseState(false);
     mRecording.reset();
     mRecording.appendPeriodicRecording(LLTrace::get_frame_recording());
