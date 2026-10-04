@@ -3,7 +3,7 @@
  name="fs_ai_writer"
  title="AI Chat Assistant Settings"
  can_resize="false"
- height="374"
+ height="440"
  width="480"
  layout="topleft"
  save_rect="true">
@@ -15,7 +15,48 @@
    follows="left|top"
    layout="topleft"
    left="10"
-   top="10"
+   top="8"
+   height="16"
+   width="440"
+   font.style="BOLD"
+   name="features_label">
+    AI features (all off by default; set up the server below first):
+  </text>
+  <check_box
+   follows="left|top"
+   layout="topleft"
+   left="10"
+   top_pad="4"
+   height="16"
+   width="460"
+   label="Writing suggestions in the chat bar (language and style boxes)"
+   control_name="FSAIWriterAutoSuggest"
+   name="feature_suggestions_check" />
+  <check_box
+   follows="left|top"
+   layout="topleft"
+   left="10"
+   top_pad="4"
+   height="16"
+   width="460"
+   label="ChatBot tab in Conversations"
+   control_name="FSAIChatbotEnabled"
+   name="feature_chatbot_check" />
+  <view_border
+   follows="left|top|right"
+   layout="topleft"
+   left="10"
+   right="-10"
+   top_pad="8"
+   height="1"
+   bevel_style="in"
+   name="separator0" />
+
+  <text
+   follows="left|top"
+   layout="topleft"
+   left="10"
+   top_pad="10"
    height="16"
    width="70"
    name="endpoint_label">

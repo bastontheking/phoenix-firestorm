@@ -92,6 +92,24 @@ bool FSFloaterIMContainer::postBuild()
 
     gSavedSettings.getControl("FSShowConversationVoiceStateIndicator")->getSignal()->connect(boost::bind(&FSFloaterIMContainer::onVoiceStateIndicatorChanged, this, _2));
 
+    // <FS:Perf> show / hide the AI ChatBot tab as soon as the setting changes
+    gSavedSettings.getControl("FSAIChatbotEnabled")->getSignal()->connect([this](LLControlVariable*, const LLSD& value, const LLSD&)
+    {
+        if (value.asBoolean())
+        {
+            if (LLFloater* chatbot = LLFloaterReg::getInstance("fs_ai_chatbot"); chatbot && chatbot->getHost() != this)
+            {
+                addFloater(chatbot, false, IM_NOTHING_SPECIAL);
+            }
+        }
+        else if (LLFloater* chatbot = LLFloaterReg::findInstance("fs_ai_chatbot"); chatbot && chatbot->getHost() == this)
+        {
+            removeFloater(chatbot);
+            chatbot->closeFloater();
+        }
+    });
+    // </FS:Perf>
+
     return true;
 }
 
@@ -444,6 +462,10 @@ void FSFloaterIMContainer::removeFloater(LLFloater* floaterp)
         setting_name = "ContactsTornOff";
         needs_unlock = true;
     }
+    else if (floater_name == "fs_ai_chatbot") // <FS:Perf> locked tab, no tear-off setting
+    {
+        needs_unlock = true;
+    }
 
     if (needs_unlock)
     {
@@ -457,7 +479,10 @@ void FSFloaterIMContainer::removeFloater(LLFloater* floaterp)
         {
             mTabContainer->unlockTabs();
         }
-        gSavedSettings.setBOOL(setting_name, true);
+        if (!setting_name.empty())
+        {
+            gSavedSettings.setBOOL(setting_name, true);
+        }
         floaterp->setCanClose(true);
     }
 

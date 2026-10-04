@@ -126,12 +126,21 @@ configure. The one external service is the ChatBot's optional web search,
 which is off by default; when it is on, only the text of your question goes
 to DuckDuckGo.
 
+**Every AI feature is off by default**, so the viewer behaves like a normal
+Firestorm until you set up a server. The chat bar only shows a ⚙ button: open
+it, enter your server, then switch on the features you want (writing
+suggestions, ChatBot tab, automatic translation, the *Translate message*
+menu). Turning suggestions off hides the language and style boxes again, and
+the ChatBot tab appears or disappears immediately.
+
 For "reasoning" models (Gemma 4, Qwen3...), the viewer asks the server to skip
 the thinking phase (`FSAIWriterDisableThinking`). Without that, the model can
 spend its entire token budget thinking and return an empty answer.
 
 ### 2.1 Settings window (⚙ button)
 The gear button in the chat bar or in the ChatBot opens this window:
+- **AI features:** switches for writing suggestions and the ChatBot tab
+  (translation switches are further down).
 - **Server:** the endpoint, e.g. `http://IP:8080/v1/chat/completions`
   (`FSAIWriterEndpoint`).
 - **Model:** which model to use. **Load models** fetches the list from

@@ -708,11 +708,11 @@
               wrap="true" />
             </layout_panel>
             <layout_panel
-              visibility_control="FSAIWriterShowButton"
+              visibility_control="FSAIWriterAutoSuggest"
               auto_resize="false"
               user_resize="false"
               name="ai_writer_layout_panel"
-              width="196">
+              width="168">
               <combo_box
                follows="right|bottom"
                bottom="-1"
@@ -746,12 +746,19 @@
                 <combo_box.item label="Funny" name="funny" value="funny" />
                 <combo_box.item label="Fix only" name="fix" value="fix" />
               </combo_box>
+            </layout_panel>
+            <layout_panel
+              visibility_control="FSAIWriterShowButton"
+              auto_resize="false"
+              user_resize="false"
+              name="ai_settings_layout_panel"
+              width="28">
               <button
                follows="right|bottom"
                bottom="-1"
                height="23"
                width="26"
-               left_pad="2"
+               left="1"
                image_hover_unselected="Toolbar_Middle_Over"
                image_selected="Toolbar_Middle_Selected"
                image_unselected="Toolbar_Middle_Off"
