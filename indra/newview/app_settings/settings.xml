@@ -27164,6 +27164,17 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Value</key>
       <string>normal</string>
     </map>
+    <key>FSAIChatbotSLContext</key>
+    <map>
+      <key>Comment</key>
+      <string>ChatBot: give the AI the region, nearby avatars and online friends, and look up the profiles of avatars mentioned in a question</string>
+      <key>Persist</key>
+      <integer>1</integer>
+      <key>Type</key>
+      <string>Boolean</string>
+      <key>Value</key>
+      <integer>1</integer>
+    </map>
     <key>FSAIWriterEndpoint</key>
     <map>
       <key>Comment</key>

@@ -17,6 +17,7 @@
   <floater.string name="bot">ChatBot</floater.string>
   <floater.string name="thinking">ChatBot is thinking...</floater.string>
   <floater.string name="searching">Searching the web...</floater.string>
+  <floater.string name="profiles">Looking up Second Life profiles...</floater.string>
   <floater.string name="sources">Sources:</floater.string>
   <floater.string name="cleared">Conversation cleared.</floater.string>
 

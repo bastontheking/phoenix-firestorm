@@ -101,6 +101,7 @@ set(viewer_SOURCE_FILES
     exogroupmutelist.cpp
     floatermedialists.cpp
     fsaichatassist.cpp
+    fsaislcontext.cpp
     fsaiwriter.cpp
     fsareasearch.cpp
     fsareasearchmenu.cpp
@@ -972,6 +973,7 @@ set(viewer_HEADER_FILES
     exogroupmutelist.h
     floatermedialists.h
     fsaichatassist.h
+    fsaislcontext.h
     fsaiwriter.h
     fsareasearch.h
     fsareasearchmenu.h

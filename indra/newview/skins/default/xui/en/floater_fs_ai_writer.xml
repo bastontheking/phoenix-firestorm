@@ -3,7 +3,7 @@
  name="fs_ai_writer"
  title="AI Chat Assistant Settings"
  can_resize="false"
- height="352"
+ height="374"
  width="440"
  layout="topleft"
  save_rect="true">
@@ -175,6 +175,17 @@
    tool_tip="List the web pages the answer was based on (only when internet access is on)"
    control_name="FSAIChatbotShowSources"
    name="chatbot_sources_check" />
+  <check_box
+   follows="left|top"
+   layout="topleft"
+   left="10"
+   top_pad="4"
+   height="16"
+   width="420"
+   label="ChatBot: knows your surroundings and the profiles of avatars you ask about"
+   tool_tip="Region, nearby avatars and online friends are given to the AI; when a question mentions a nearby avatar or friend, their profile is looked up. Respects RLV name restrictions."
+   control_name="FSAIChatbotSLContext"
+   name="chatbot_slcontext_check" />
 
   <text
    follows="left|top|right"

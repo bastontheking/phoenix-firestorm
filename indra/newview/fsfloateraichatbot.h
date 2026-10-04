@@ -63,7 +63,8 @@ private:
     void onSend();
     void onClear();
     void onSendModeChanged();
-    void askModel(const std::string& question, const std::string& web_context, const std::string& sources, bool one_off);
+    void continueWithWebSearch(const std::string& question, const std::string& profiles, bool one_off);
+    void askModel(const std::string& question, const std::string& web_context, const std::string& sources, const std::string& profiles, bool one_off);
     void appendEntry(const Entry& entry, bool one_off = false);
     void appendLine(const std::string& text, const LLColor4& color, bool italic = false);
     void setBusy(bool busy, const std::string& status = LLStringUtil::null);
