@@ -1407,6 +1407,8 @@ LLView* FSChatHistory::getHeader(const LLChat& chat,const LLStyle::Params& style
 void FSChatHistory::clear()
 {
     mLastFromName.clear();
+    mRecentMessages.clear();  // <FS:Perf>
+    mTranslatedLines.clear(); // <FS:Perf>
     // workaround: Setting the text to an empty line before clear() gets rid of
     // the scrollbar, if present, which otherwise would get stuck until the next
     // line was appended. -Zi
@@ -1493,10 +1495,12 @@ bool FSChatHistory::findMessageAtCursor(std::string& from, std::string& text, st
         return false;
     }
 
-    // Newest first: the most recent message whose text is on that line.
+    // Newest first: the most recent message whose text AND sender are on
+    // that line (texts like "is online." are identical for everyone).
     for (auto it = mRecentMessages.rbegin(); it != mRecentMessages.rend(); ++it)
     {
-        if (it->mText.size() >= 1 && paragraph.find(it->mText) != std::string::npos)
+        if (!it->mText.empty() && paragraph.find(it->mText) != std::string::npos
+            && (it->mFrom.empty() || paragraph.find(it->mFrom) != std::string::npos))
         {
             from = it->mFrom;
             text = it->mText;
@@ -1520,20 +1524,36 @@ bool FSChatHistory::findMessageAtCursor(std::string& from, std::string& text, st
     return !text.empty();
 }
 
+bool FSChatHistory::isTranslatableLine(const std::string& line) const
+{
+    // Never translate the same line twice (including while a translation
+    // is on its way), and never translate a translation.
+    if (mTranslatedLines.count(line))
+    {
+        return false;
+    }
+    static LLCachedControl<std::string> tag(gSavedSettings, "FSAIWriterTranslatorTag", "Tradutor");
+    std::string trimmed = line;
+    LLStringUtil::trim(trimmed);
+    const std::string prefix = "[" + std::string(tag) + "]";
+    return trimmed.compare(0, prefix.size(), prefix) != 0;
+}
+
 bool FSChatHistory::canTranslateMessageAtCursor() const
 {
     static LLCachedControl<bool> enabled(gSavedSettings, "FSAIWriterTranslateMenu", true);
-    std::string from, text;
-    return enabled && findMessageAtCursor(from, text);
+    std::string from, text, line;
+    return enabled && findMessageAtCursor(from, text, &line) && isTranslatableLine(line);
 }
 
 void FSChatHistory::translateMessageAtCursor()
 {
     std::string from, text, original_line;
-    if (!findMessageAtCursor(from, text, &original_line))
+    if (!findMessageAtCursor(from, text, &original_line) || !isTranslatableLine(original_line))
     {
         return;
     }
+    mTranslatedLines.insert(original_line);
 
     LLHandle<LLView> handle = getHandle();
     FSAIWriter::translate(text, [handle, from, original_line](bool success, const std::string& translation, const std::string& error)
@@ -1545,7 +1565,8 @@ void FSChatHistory::translateMessageAtCursor()
         }
 
         // Same font and size as regular chat text, in italics.
-        LLUIColor color = LLUIColorTable::instance().getColor("SystemChatColor");
+        static LLCachedControl<LLColor4> translator_color(gSavedSettings, "FSAIWriterTranslatorColor", LLColor4(0.55f, 0.9f, 0.6f, 1.f));
+        LLUIColor color((LLColor4)translator_color);
         LLFontGL* fontp = LLViewerChat::getChatFont();
         LLStyle::Params style;
         style.color(color);
@@ -1563,6 +1584,8 @@ void FSChatHistory::translateMessageAtCursor()
         else
         {
             line += error;
+            // allow another try after a failure
+            self->mTranslatedLines.erase(original_line);
         }
 
         const bool at_bottom = self->mScroller->isAtBottom();
@@ -1580,11 +1603,15 @@ void FSChatHistory::translateMessageAtCursor()
             {
                 ++insert_pos;
             }
-            const LLWString inserted = utf8str_to_wstring("\n" + line);
+            // Line breaks are their own segment type in LLTextBase; a bare
+            // newline inside a text segment would render as a glyph.
+            const LLWString text_w = utf8str_to_wstring(line);
             const S32 pos = (S32)insert_pos;
+            LLStyleConstSP sp(new LLStyle(style));
             LLTextBase::segment_vec_t segments;
-            segments.push_back(new LLNormalTextSegment(LLStyleConstSP(new LLStyle(style)), pos, pos + (S32)inserted.size(), *self));
-            self->insertStringNoUndo(pos, inserted, &segments);
+            segments.push_back(new LLLineBreakTextSegment(sp, pos));
+            segments.push_back(new LLNormalTextSegment(sp, pos + 1, pos + 1 + (S32)text_w.size(), *self));
+            self->insertStringNoUndo(pos, utf8str_to_wstring("\n") + text_w, &segments);
             self->needsReflow();
         }
         else
