@@ -1651,61 +1651,105 @@ void FSChatHistory::deleteMessageAtCursor()
         return;
     }
     const LLWString& wtext = getWText();
+    const S32 length = (S32)wtext.size();
     const std::string paragraph = wstring_to_utf8str(wtext.substr(start, end - start));
-    const bool is_translation = isTranslationLine(paragraph);
-
-    std::string from, text, line;
-    const bool known = !is_translation && findMessageAtCursor(from, text, &line);
-
-    // Also remove the translation line that belongs to this message.
-    S32 del_end = end;
-    if (!is_translation && end < (S32)wtext.size())
-    {
-        S32 next_end = end + 1;
-        while (next_end < (S32)wtext.size() && wtext[next_end] != '\n')
-        {
-            ++next_end;
-        }
-        if (isTranslationLine(wstring_to_utf8str(wtext.substr(end + 1, next_end - end - 1))))
-        {
-            del_end = next_end;
-        }
-        mTranslatedLines.erase(paragraph);
-    }
-
-    // Remove the text together with one line break.
     const bool at_bottom = mScroller->isAtBottom();
-    if (del_end < (S32)wtext.size())
+
+    // A translation line on its own: display only.
+    if (isTranslationLine(paragraph))
     {
-        removeStringNoUndo(start, del_end - start + 1);
-    }
-    else if (start > 0)
-    {
-        removeStringNoUndo(start - 1, del_end - start + 1);
-    }
-    else
-    {
-        removeStringNoUndo(start, del_end - start);
-    }
-    needsReflow();
-    if (at_bottom)
-    {
-        mScrollToBottom = true;
+        removeStringNoUndo(start > 0 ? start - 1 : start, (end - start) + (start > 0 || end < length ? 1 : 0));
+        needsReflow();
+        mScrollToBottom = at_bottom;
+        return;
     }
 
-    if (!known)
+    // Find the whole message the cursor is in: every message remembers the
+    // exact block of text it added to the history (header, name, all its
+    // lines), so multi-line and wrapped messages are removed as one unit.
+    const S32 cursor = llclamp(mCursorPos, 0, length);
+    auto found = mRecentMessages.end();
+    S32 block_start = -1;
+    for (auto it = mRecentMessages.end(); it != mRecentMessages.begin(); )
     {
-        return; // a translation or an unidentified line: display only
-    }
-
-    for (auto it = mRecentMessages.rbegin(); it != mRecentMessages.rend(); ++it)
-    {
-        if (it->mText == text && it->mFrom == from)
+        --it;
+        if (it->mBlock.empty())
         {
-            mRecentMessages.erase(std::next(it).base());
+            continue;
+        }
+        for (size_t pos = wtext.find(it->mBlock); pos != LLWString::npos; pos = wtext.find(it->mBlock, pos + 1))
+        {
+            if (cursor >= (S32)pos && cursor <= (S32)(pos + it->mBlock.size()))
+            {
+                found = it;
+                block_start = (S32)pos;
+                break;
+            }
+        }
+        if (found != mRecentMessages.end())
+        {
             break;
         }
     }
+
+    if (found == mRecentMessages.end())
+    {
+        // Unknown text (e.g. older than what this window remembers): remove
+        // the line under the cursor only, from the display.
+        removeStringNoUndo(start > 0 ? start - 1 : start, (end - start) + (start > 0 || end < length ? 1 : 0));
+        needsReflow();
+        mScrollToBottom = at_bottom;
+        return;
+    }
+
+    S32 del_start = block_start;
+    S32 del_end = block_start + (S32)found->mBlock.size(); // exclusive
+
+    // The block normally starts with the line break that separated it from
+    // the previous message; if not, take the line break after it instead.
+    if (found->mBlock.front() != '\n' && del_end < length && wtext[del_end] == '\n')
+    {
+        ++del_end;
+    }
+
+    // Also remove the translation line that belongs to this message.
+    if (del_end < length)
+    {
+        S32 next_start = del_end;
+        if (wtext[next_start] == '\n')
+        {
+            ++next_start;
+        }
+        S32 next_end = next_start;
+        while (next_end < length && wtext[next_end] != '\n')
+        {
+            ++next_end;
+        }
+        if (next_end > next_start && isTranslationLine(wstring_to_utf8str(wtext.substr(next_start, next_end - next_start))))
+        {
+            del_end = next_end;
+        }
+    }
+
+    const std::string from = found->mFrom;
+    const std::string text = found->mText;
+    for (S32 p = del_start; p < del_end; )
+    {
+        // forget "already translated" markers of the removed lines
+        S32 q = p;
+        while (q < del_end && wtext[q] != '\n')
+        {
+            ++q;
+        }
+        mTranslatedLines.erase(wstring_to_utf8str(wtext.substr(p, q - p)));
+        p = q + 1;
+    }
+    mRecentMessages.erase(found);
+
+    removeStringNoUndo(del_start, del_end - del_start);
+    needsReflow();
+    mScrollToBottom = at_bottom;
+
     removeFromTranscript(from, text);
     if (mForgetMessage)
     {
@@ -1820,7 +1864,15 @@ void FSChatHistory::requestTranslation(const std::string& from, const std::strin
 // <FS:Perf> appendMessage() now also triggers automatic AI translation.
 void FSChatHistory::appendMessage(const LLChat& chat, const LLSD &args, const LLStyle::Params& input_append_params)
 {
+    const S32 before = getLength();
     appendMessageImpl(chat, args, input_append_params);
+
+    // Remember exactly what this message added to the history, so "Delete
+    // for me" can remove the whole message (all of its lines) later.
+    if (!mRecentMessages.empty() && mRecentMessages.back().mText == chat.mText && getLength() > before)
+    {
+        mRecentMessages.back().mBlock = getWText().substr(before);
+    }
     autoTranslate(chat, args);
 }
 

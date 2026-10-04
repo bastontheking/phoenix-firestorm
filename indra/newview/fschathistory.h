@@ -176,6 +176,7 @@ class FSChatHistory : public LLTextEditor   // <FS:Zi> FIRE-8600: TAB out of cha
         {
             std::string mFrom;
             std::string mText;
+            LLWString   mBlock; // the exact text this message added to the history
         };
         std::deque<RecentMessage> mRecentMessages;
         bool findMessageAtCursor(std::string& from, std::string& text, std::string* line = nullptr) const;
