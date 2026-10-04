@@ -1,3 +1,6 @@
+> [!NOTE]
+> **Fork experimental (não oficial): Firestorm "Perf + AI".** Este repositório é um fork pessoal, feito com *vibe coding*, para tentar melhorar o desempenho deste viewer antigo (paralelismo, menos travadas, qualidade adaptativa) e adicionar recursos de IA que rodam na sua própria LLM (sugestões de escrita no chat, tradução de mensagens, ChatBot com contexto do Second Life). **Veja tudo o que mudou em [FORK-PERF-AI.md](FORK-PERF-AI.md).** Não tem relação com a equipe do Firestorm nem com a Linden Lab.
+
 <img align="left" width="100" height="100" src="doc/firestorm_256.png" alt="Logo of Firestorm viewer"/>
 
 **[Firestorm](https://www.firestormviewer.org) is a free client for 3D virtual worlds such as Second Life and various OpenSim worlds where users can create, connect and chat with others from around the world.**

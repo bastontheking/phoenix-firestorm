@@ -4,7 +4,7 @@
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Phoenix Firestorm Viewer Source Code
- * Copyright (C) 2026, The Phoenix Firestorm Project, Inc.
+ * Copyright (C) 2026, Baston (baston.dev)
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
