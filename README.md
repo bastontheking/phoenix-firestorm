@@ -1,5 +1,5 @@
 > [!NOTE]
-> **Fork experimental (não oficial): Firestorm "Perf + AI".** Este repositório é um fork pessoal, feito com *vibe coding*, para tentar melhorar o desempenho deste viewer antigo (paralelismo, menos travadas, qualidade adaptativa) e adicionar recursos de IA que rodam na sua própria LLM (sugestões de escrita no chat, tradução de mensagens, ChatBot com contexto do Second Life). **Veja tudo o que mudou em [FORK-PERF-AI.md](FORK-PERF-AI.md).** Não tem relação com a equipe do Firestorm nem com a Linden Lab.
+> **Unofficial experimental fork: Firestorm "Perf + AI".** This is a personal, vibe-coded fork that tries to improve the performance of this old viewer (multi-core parallelism, fewer hitches, adaptive quality) and adds AI features that run on your own local LLM (writing suggestions in chat, message translation, a ChatBot with Second Life context). **See everything that changed in [FORK-PERF-AI.md](FORK-PERF-AI.md).** Not affiliated with the Firestorm team or Linden Lab.
 
 <img align="left" width="100" height="100" src="doc/firestorm_256.png" alt="Logo of Firestorm viewer"/>
 

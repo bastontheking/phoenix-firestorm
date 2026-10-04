@@ -72,8 +72,8 @@ public:
     static const std::vector<std::string>& getStyleKeys();
 
     // Ask for up to three rewrites of text in the given style, written in
-    // language ("pt" = Brazilian Portuguese, "en" = English; translating if
-    // needed). When more_creative is set, a higher temperature is used.
+    // language (a code from getLanguageName(), translating if needed). When
+    // more_creative is set, a higher temperature is used.
     static void rewrite(const std::string& text, const std::string& style, const std::string& language, bool more_creative, rewrite_callback_t callback);
 
     // Translate a received chat message into FSAIWriterTranslateTo.
@@ -94,6 +94,8 @@ public:
     // Exposed for testing/diagnostics.
     static std::vector<std::string> parseSuggestions(const std::string& content);
     static std::string getModelsUrl(const std::string& chat_url);
+    // "pt", "en", "es", ... -> language name used in prompts
+    static std::string getLanguageName(const std::string& code);
 
 private:
     static std::string getStyleInstruction(const std::string& style);

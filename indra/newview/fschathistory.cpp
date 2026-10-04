@@ -1532,7 +1532,7 @@ bool FSChatHistory::isTranslatableLine(const std::string& line) const
     {
         return false;
     }
-    static LLCachedControl<std::string> tag(gSavedSettings, "FSAIWriterTranslatorTag", "Tradutor");
+    static LLCachedControl<std::string> tag(gSavedSettings, "FSAIWriterTranslatorTag", "Translator");
     std::string trimmed = line;
     LLStringUtil::trim(trimmed);
     const std::string prefix = "[" + std::string(tag) + "]";
@@ -1591,7 +1591,7 @@ void FSChatHistory::requestTranslation(const std::string& from, const std::strin
         style.font.size(LLFontGL::sizeFromFont(fontp));
         style.font.style("ITALIC");
 
-        static LLCachedControl<std::string> tag(gSavedSettings, "FSAIWriterTranslatorTag", "Tradutor");
+        static LLCachedControl<std::string> tag(gSavedSettings, "FSAIWriterTranslatorTag", "Translator");
         std::string line = "[" + std::string(tag) + "] ";
         if (success)
         {

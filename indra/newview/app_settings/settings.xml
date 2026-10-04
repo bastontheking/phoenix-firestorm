@@ -27036,7 +27036,7 @@ Change of this parameter will affect the layout of buttons in notification toast
       <key>Type</key>
       <string>String</string>
       <key>Value</key>
-      <string>Tradutor</string>
+      <string>Translator</string>
     </map>
     <key>FSAIWriterTranslatorColor</key>
     <map>
@@ -27068,7 +27068,7 @@ Change of this parameter will affect the layout of buttons in notification toast
     <key>FSAIWriterLanguage</key>
     <map>
       <key>Comment</key>
-      <string>Language the AI writes chat suggestions in (pt = Brazilian Portuguese, en = English)</string>
+      <string>Language the AI writes chat suggestions in (pt, en, es, fr, de, it, ja)</string>
       <key>Persist</key>
       <integer>1</integer>
       <key>Type</key>

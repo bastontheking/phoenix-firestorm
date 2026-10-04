@@ -172,6 +172,16 @@ std::string FSAIWriter::getStyleInstruction(const std::string& style)
 }
 
 // static
+std::string FSAIWriter::getLanguageName(const std::string& code)
+{
+    static const std::map<std::string, std::string> names{
+        { "pt", "Brazilian Portuguese" }, { "en", "English" }, { "es", "Spanish" }, { "fr", "French" },
+        { "de", "German" }, { "it", "Italian" }, { "ja", "Japanese" } };
+    auto it = names.find(code);
+    return it != names.end() ? it->second : std::string("Brazilian Portuguese");
+}
+
+// static
 std::string FSAIWriter::getModelsUrl(const std::string& chat_url)
 {
     std::string url = trim(chat_url);
@@ -380,7 +390,7 @@ bool FSAIWriter::chatCompletionMessages(const std::vector<ChatMessage>& chat_mes
 void FSAIWriter::rewriteCoro(std::string text, std::string style, std::string language, bool more_creative, rewrite_callback_t callback)
 {
     Result res;
-    const std::string target_language = (language == "en") ? "English" : "Brazilian Portuguese";
+    const std::string target_language = getLanguageName(language);
     const std::string system_prompt =
         "You are a writing assistant for chat messages in the virtual world Second Life. "
         "The user gives you a message they are about to send. " + getStyleInstruction(style) + " "

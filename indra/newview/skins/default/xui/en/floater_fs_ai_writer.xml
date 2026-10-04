@@ -133,6 +133,16 @@
     <combo_box.item label="Brazilian Portuguese" name="pt" value="Brazilian Portuguese" />
     <combo_box.item label="English" name="en" value="English" />
     <combo_box.item label="Spanish" name="es" value="Spanish" />
+    <combo_box.item label="French" name="fr" value="French" />
+    <combo_box.item label="German" name="de" value="German" />
+    <combo_box.item label="Italian" name="it" value="Italian" />
+    <combo_box.item label="Japanese" name="ja" value="Japanese" />
+    <combo_box.item label="Korean" name="ko" value="Korean" />
+    <combo_box.item label="Chinese (Simplified)" name="zh" value="Simplified Chinese" />
+    <combo_box.item label="Russian" name="ru" value="Russian" />
+    <combo_box.item label="Turkish" name="tr" value="Turkish" />
+    <combo_box.item label="Dutch" name="nl" value="Dutch" />
+    <combo_box.item label="Polish" name="pl" value="Polish" />
   </combo_box>
 
   <view_border

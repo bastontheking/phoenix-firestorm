@@ -1,244 +1,247 @@
-# Firestorm "Perf + AI" — um fork experimental feito no vibe coding
+# Firestorm "Perf + AI": an experimental, vibe-coded fork
 
-> **Isto não é o Firestorm oficial.** É um fork pessoal e experimental do
-> [Firestorm Viewer](https://github.com/FirestormViewer/phoenix-firestorm)
-> (o viewer open source para Second Life). Não tem relação com a equipe do
-> Firestorm nem com a Linden Lab. Use por sua conta e risco.
+> **This is not the official Firestorm.** It is a personal, experimental fork
+> of the [Firestorm Viewer](https://github.com/FirestormViewer/phoenix-firestorm),
+> the open source viewer for Second Life. It has no affiliation with the
+> Firestorm team or with Linden Lab. Use it at your own risk.
 
-## Por que este fork existe
+## Why this fork exists
 
-O código base dos viewers de Second Life é **antigo**: boa parte do frame roda
-em uma única thread, e muito trabalho pesado acontece na thread principal no
-meio do frame. Em CPUs modernas, com muitos núcleos, isso deixa a maior parte
-do processador parada enquanto um núcleo só segura todo o resto, e o resultado
-são travadinhas (stutter), principalmente em lugares cheios.
+The Second Life viewer codebase is **old**. Much of each frame runs on a single
+thread, and a lot of heavy work happens on the main thread in the middle of a
+frame. On modern many-core CPUs this leaves most of the processor idle while
+one core carries everything, and the result is stutter, especially in crowded
+places.
 
-Eu fiz este fork no **vibe coding**: as mudanças foram escritas conversando
-com uma IA (Claude, da Anthropic), que leu o código, propôs, implementou,
-compilou e corrigiu, enquanto eu testava no Second Life e dizia o que estava
-bom ou ruim. Os objetivos eram:
+I built this fork by **vibe coding**. The changes were written in a
+conversation with an AI coding assistant (Claude, by Anthropic), which read the
+code, proposed changes, implemented, compiled and fixed them, while I tested
+in Second Life and reported what worked and what did not. The goals were:
 
-1. **Desempenho e estabilidade de frame**: menos travadas, mais FPS, sem
-   baixar a qualidade gráfica global.
-2. **Recursos novos usando IA local**: uma LLM rodando na minha própria
-   máquina (llama.cpp, LM Studio, Ollama...). Nada vai para serviços de IA na
-   nuvem.
+1. **Performance and frame-time stability:** fewer hitches and higher FPS,
+   without lowering global graphics quality.
+2. **New features built on a local AI:** a large language model (LLM) running
+   on my own machine (llama.cpp, LM Studio, Ollama...). Nothing is sent to
+   cloud AI services.
 
-Nos meus testes ficou melhor que o original, mas **não é um benchmark formal**.
-O viewer tem um overlay e um log de frame pacing (descritos abaixo) para quem
-quiser medir antes e depois na própria máquina.
+In my own testing it runs better than the original, but this is **not a
+formal benchmark**. The viewer includes an on-screen overlay and a
+frame-pacing log (see below), so anyone can measure before and after on their
+own machine.
 
-Todas as mudanças no código estão marcadas com `<FS:Perf>` e ficam no branch
-`perf-overhaul`. O primeiro commit do fork vem logo depois do commit upstream
-`48d525fca3`.
+Every code change is marked with `<FS:Perf>`. All of the work is on the
+`perf-overhaul` branch, starting right after upstream commit `48d525fca3`.
 
 ---
 
-## Parte 1 — Desempenho
+## Part 1: Performance
 
-Os detalhes técnicos (arquitetura, gargalos encontrados, como medir) estão em
-[`doc/performance_overhaul.md`](doc/performance_overhaul.md). Resumo do que foi
-feito:
+The technical details (architecture, bottlenecks found, how to measure) are in
+[`doc/performance_overhaul.md`](doc/performance_overhaul.md). Summary:
 
-### 1.1 Job system (paralelismo dentro do frame)
-- Novo `LL::JobSystem` (`indra/llcommon/lljobsystem.*`): um `parallelFor` do
-  tipo fork-join que usa os núcleos da CPU para trabalho que o frame precisa
-  **agora**.
-- Sem locks no caminho principal; a thread que chama também trabalha, e o
-  número de workers é calculado automaticamente a partir dos núcleos.
-- Num teste isolado de estresse, todos os casos passaram: cobertura,
-  chamadas aninhadas e várias threads chamando ao mesmo tempo. Em 16 threads
-  ficou 10,5× mais rápido que a versão serial.
-- Setting: `FSJobSystemThreads` (0 = automático).
+### 1.1 Job system (parallel work inside a frame)
+- New `LL::JobSystem` (`indra/llcommon/lljobsystem.*`): a fork-join
+  `parallelFor` that spreads work the frame needs *right now* across the CPU
+  cores.
+- No locks on the hot path, the calling thread does work too, and the worker
+  count is derived automatically from the number of cores.
+- An isolated stress test passes every case: full index coverage, nested
+  calls, and several threads submitting work at once. On 16 hardware threads
+  it ran 10.5× faster than the serial version.
+- Setting: `FSJobSystemThreads` (0 = automatic).
 
-### 1.2 Trabalho tirado da thread principal (parado em série → paralelo)
-| O quê | Antes | Agora | Setting |
+### 1.2 Work moved off the main thread (serial → parallel)
+| What | Before | Now | Setting |
 |---|---|---|---|
-| Prioridade das texturas (área na tela de cada face) | serial na main thread | paralelo no job system | `FSParallelTextureStats` |
-| Repriorização de emergência quando a memória acaba | todas as texturas em um único frame | paralelo | — |
-| Análise de transparência (alpha) e máscara de clique das texturas | varredura pixel a pixel na main thread | paralela, com resultado idêntico | — |
-| Matrizes de skinning dos avatares | montadas uma a uma dentro do desenho | todos os avatares visíveis em paralelo antes do culling | `FSParallelSkinningPalettes` |
+| Texture priorities (on-screen area of every face) | serial, main thread | parallel, job system | `FSParallelTextureStats` |
+| Low-memory emergency texture re-prioritisation | every texture in a single frame | parallel | — |
+| Texture alpha analysis and click (pick) mask | per-pixel pass on the main thread | split across cores, identical results | — |
+| Avatar skinning matrix palettes | built one by one inside the draw loops | all visible avatars in parallel, before culling | `FSParallelSkinningPalettes` |
 
-### 1.3 Travadas (stutter) eliminadas
-- **Reconstrução de geometria:** o Firestorm recebia um orçamento de tempo
-  para isso e **ignorava** esse orçamento, processando a fila inteira num
-  único frame. Agora o orçamento é respeitado. Objetos próximos, avatares,
-  attachments, HUDs e meshes que acabaram de carregar continuam sendo
-  reconstruídos na hora; o resto é distribuído entre os frames seguintes.
+### 1.3 Hitches removed
+- **Geometry rebuilds:** Firestorm was given a time budget for these and
+  **ignored it**, draining the whole queue in one frame. The budget is now
+  enforced. Nearby objects, avatars, attachments, HUDs and meshes that just
+  finished loading are still rebuilt immediately; everything else is spread
+  over the following frames.
   Settings: `FSBudgetGeometryUpdates`, `FSGeomUpdateMinBudgetMs`,
   `FSGeomUpdateNearDistance`.
-- **Meshes carregadas:** antes eram copiadas inteiras na main thread; agora
-  os dados são movidos, sem cópia. A fila de meshes prontas também ganhou um
-  limite por frame (`FSMeshLoadedBudgetMs`).
-- **Impostors** (avatares desenhados como "foto"): antes todos os
-  desatualizados eram regenerados no mesmo frame. Agora só os N mais antigos
-  por frame (`FSMaxImpostorUpdatesPerFrame`).
-- **Workers dos thread pools:** antes esperavam com `Sleep(1)` em loop, o que
-  somava 1–2 ms de atraso a cada tarefa de decodificação, download ou mesh.
-  Agora acordam na hora, por notificação.
-- **Limitador de FPS:** antes truncava a espera para milissegundos inteiros.
-  Agora agenda os frames por prazo, com precisão abaixo de 1 ms.
+- **Loaded meshes:** these used to be deep-copied on the main thread; the data
+  is now moved instead. The queue of finished meshes also has a per-frame
+  budget (`FSMeshLoadedBudgetMs`).
+- **Impostors** (distant avatars drawn as a flat snapshot): every stale one
+  used to be regenerated in the same frame. Now only the N stalest are
+  refreshed per frame (`FSMaxImpostorUpdatesPerFrame`).
+- **Thread pool workers:** these polled with `Sleep(1)` in a loop, which added
+  1–2 ms of latency to every decode, fetch and mesh task. They now wake up on
+  notification.
+- **FPS limiter:** this truncated its wait to whole milliseconds. It now
+  schedules frames against deadlines, with sub-millisecond accuracy.
 
-### 1.4 Qualidade adaptativa (orçamento de frame)
-- Novo `LLFrameBudget`: compara o tempo de frame com a meta
-  (`FSFrameBudgetTargetFPS`, 60 por padrão) e calcula uma "pressão" de 0 a 1.
-- Quando falta tempo, reduz **primeiro** o que não dá para perceber:
-  - a frequência de animação dos avatares pequenos na tela;
-  - o LOD de objetos pequenos na tela;
-  - quantos impostors são atualizados por frame;
-  - o tempo gasto em reconstruções que podem esperar.
-- **Nunca** degrada o que está grande ou perto da câmera, nem attachments ou
-  HUDs. A qualidade volta aos poucos quando sobra tempo.
-- Ignora frames com a janela fora de foco ou minimizada e respeita o
-  limitador de FPS.
+### 1.4 Adaptive quality (frame budget)
+- New `LLFrameBudget`: compares frame time against a target
+  (`FSFrameBudgetTargetFPS`, 60 by default) and derives a "pressure" value
+  from 0 to 1.
+- When frames run over budget, it reduces only things you are unlikely to
+  notice, in this order:
+  - the animation rate of avatars that are small on screen;
+  - the LOD of objects that are small on screen;
+  - how many impostors are refreshed per frame;
+  - time spent on rebuilds that can wait.
+- It **never** degrades what is large or close to the camera, attachments or
+  HUDs. Quality comes back gradually once there is headroom.
+- It ignores frames while the window is unfocused or minimized, and respects
+  the FPS limiter.
 - Settings: `FSAdaptiveQuality`, `FSAvatarAnimLOD`.
 
-### 1.5 LOD de animação
-- Avatares que aparecem pequenos na tela animam a 1/2, 1/3 ou 1/4 da taxa
-  de frames. A pose fica parada entre as atualizações, mas a velocidade da
-  animação continua correta.
+### 1.5 Animation LOD
+- Avatars that are small on screen animate at 1/2, 1/3 or 1/4 of the frame
+  rate. Their pose is held between updates, but animations keep their real
+  speed.
 
-### 1.6 Medição
-- **Overlay na tela:** *Advanced > Show Info > Show Performance Stats*
-  (`FSShowPerfStats`). Mostra:
-  - FPS médio, mediana, p99 e p99,9 do tempo de frame;
-  - 1% low e 0,1% low;
-  - spikes (frames mais lentos que o dobro da mediana);
-  - pressão do orçamento de frame;
-  - uso dos workers;
-  - reconstruções adiadas;
-  - avatares com animação reduzida.
-- **Log:** `FSLogFramePacing` grava uma linha `FramePacing` no log a cada 5 s.
-- Quase todas as otimizações têm uma chave em *Debug Settings*. Desligando
-  todas, você tem o comportamento antigo **no mesmo executável**, para
-  comparar.
+### 1.6 Measuring
+- **On-screen overlay:** *Advanced > Show Info > Show Performance Stats*
+  (`FSShowPerfStats`). It shows:
+  - average FPS, plus median, p99 and p99.9 frame time;
+  - 1% low and 0.1% low;
+  - spikes (frames slower than twice the median);
+  - frame-budget pressure;
+  - job system utilisation;
+  - deferred rebuilds;
+  - avatars with a reduced animation rate.
+- **Log:** `FSLogFramePacing` writes a `FramePacing` line to the log every 5 s.
+- Almost every optimisation has a switch in *Debug Settings*. With all of them
+  off you get the old behaviour **in the same build**, which makes before and
+  after comparisons easy.
 
 ---
 
-## Parte 2 — Recursos de IA (com a sua própria LLM)
+## Part 2: AI features (with your own LLM)
 
-Todos os recursos de IA usam um servidor **compatível com a API da OpenAI**
-que você mesmo roda: [llama.cpp](https://github.com/ggml-org/llama.cpp)
-(`llama-server`), LM Studio, Ollama, vLLM etc. O texto vai **apenas** para o
-endereço que você configurar. O único serviço externo é a busca na web do
-ChatBot, que é opcional e vem desligada: quando ligada, só o texto da sua
-pergunta vai para o DuckDuckGo.
+All AI features use a server you run yourself that speaks the **OpenAI
+"chat completions" API**:
+[llama.cpp](https://github.com/ggml-org/llama.cpp) (`llama-server`),
+LM Studio, Ollama, vLLM and so on. Text is sent **only** to the address you
+configure. The one external service is the ChatBot's optional web search,
+which is off by default; when it is on, only the text of your question goes
+to DuckDuckGo.
 
-Para modelos que "pensam" antes de responder (Gemma 4, Qwen3...), o viewer
-pede ao servidor para pular o raciocínio (`FSAIWriterDisableThinking`). Sem
-isso, o modelo gasta todos os tokens pensando e a resposta volta vazia.
+For "reasoning" models (Gemma 4, Qwen3...), the viewer asks the server to skip
+the thinking phase (`FSAIWriterDisableThinking`). Without that, the model can
+spend its entire token budget thinking and return an empty answer.
 
-### 2.1 Janela de configuração (botão ⚙)
-O botão de engrenagem na barra do chat ou do ChatBot abre esta janela:
-- **Server:** endereço do servidor, por exemplo
-  `http://IP:8080/v1/chat/completions` (`FSAIWriterEndpoint`).
-- **Model:** o modelo a usar, com o botão **Load models**, que pega a lista
-  em `/v1/models` (`FSAIWriterModel`).
-- **Skip model reasoning:** liga ou desliga o raciocínio do modelo.
-- **Tradução:** tradução automática, item no menu de clique direito e idioma
-  de destino.
-- **ChatBot:** acesso à internet, mostrar as fontes, contexto do Second Life
-  e **Clear history**.
-- **Test connection:** faz uma tradução de teste para conferir o servidor.
+### 2.1 Settings window (⚙ button)
+The gear button in the chat bar or in the ChatBot opens this window:
+- **Server:** the endpoint, e.g. `http://IP:8080/v1/chat/completions`
+  (`FSAIWriterEndpoint`).
+- **Model:** which model to use. **Load models** fetches the list from
+  `/v1/models` (`FSAIWriterModel`).
+- **Skip model reasoning:** turns the model's thinking phase off or on.
+- **Translation:** automatic translation, the right-click menu item, and the
+  target language.
+- **ChatBot:** internet access, showing sources, Second Life context, and
+  **Clear history**.
+- **Test connection:** runs a short test translation against the server.
 
-### 2.2 Sugestões de escrita na barra do chat (nearby e IM)
+### 2.2 Writing suggestions in the chat bar (nearby chat and IMs)
 ```
-[ sugestões — aparecem sozinhas enquanto você digita        ]
-[campo de texto] [PT-BR/EN] [Estilo ▾] [⚙] [emoji] [send]
+[ suggestions: appear on their own while you type           ]
+[input] [PT-BR/EN/ES/FR/DE/IT/JA] [Style ▾] [⚙] [emoji] [send]
 ```
-- Você digita, e **1 segundo** depois de parar (`FSAIWriterAutoSuggestDelay`)
-  aparecem **3 sugestões** para a sua frase.
-- **Idioma** (PT-BR ou EN): o idioma em que as sugestões são escritas. Se
-  precisar, a frase é traduzida.
-- **Estilo:** Nicer, Formal, Casual, Romantic, Funny ou Fix only (só corrige
-  erros).
-- Clicar numa sugestão coloca o texto no campo de digitação. **Nada é
-  enviado sozinho**; é você quem aperta Enter.
-- A faixa de sugestões some quando o campo está vazio e quando a mensagem é
-  enviada.
-- Ignora comandos que começam com `/` e janelas que não estão visíveis.
+- About **1 second** after you stop typing (`FSAIWriterAutoSuggestDelay`),
+  **3 suggestions** for your sentence appear above the input.
+- **Language:** the language the suggestions are written in. If your text is
+  in another language, it is translated.
+- **Style:** Nicer, Formal, Casual, Romantic, Funny, or Fix only (just
+  corrects mistakes).
+- Clicking a suggestion puts it in the input. **Nothing is ever sent
+  automatically**; you still press Enter.
+- The suggestions strip hides when the input is empty and after sending.
+- `/commands` and hidden chat windows are ignored.
 - Settings: `FSAIWriterAutoSuggest`, `FSAIWriterLanguage`, `FSAIWriterStyle`,
   `FSAIWriterShowButton`.
 
-### 2.3 Tradução de mensagens
-- **Pelo clique direito** em qualquer mensagem do chat ou de um IM, em
-  *Translate message (AI)*. A tradução aparece **logo abaixo** da mensagem
-  original, em itálico, com cor própria, no mesmo tamanho de fonte:
+### 2.3 Message translation
+- **Right-click** any message in nearby chat or an IM and pick
+  *Translate message (AI)*. The translation appears **right below** the
+  original, in italics, in its own color and the regular chat font size:
   ```
-  [20:14] Pessoa: Hi!
-  [Tradutor] Pessoa: Oi!
+  [20:14] Someone: Oi, tudo bem?
+  [Translator] Someone: Hi, how are you?
   ```
-- **Automática** (`FSAIWriterAutoTranslate`): cada mensagem que chega em outro
-  idioma ganha a tradução embaixo. Ficam de fora:
-  - mensagens que já estão no idioma de destino;
-  - as suas próprias mensagens;
-  - avisos do sistema;
-  - mensagens de objetos;
-  - o histórico carregado do log.
-- Cada linha é traduzida **uma vez só**, e uma tradução nunca é traduzida de
-  novo. A linha de tradução existe **só na sua tela**; nada é enviado ao SL.
-- Settings: `FSAIWriterTranslateTo` (Brazilian Portuguese por padrão),
-  `FSAIWriterTranslatorTag` ("Tradutor"), `FSAIWriterTranslatorColor`,
-  `FSAIWriterTranslateMenu`.
+- **Automatic** (`FSAIWriterAutoTranslate`): every incoming message in another
+  language gets its translation underneath. These are skipped:
+  - messages already in the target language;
+  - your own messages;
+  - system notices;
+  - object chat;
+  - history loaded from the log.
+- Each line is translated **only once**, and a translation is never
+  translated again. Translation lines exist **only on your screen**; nothing
+  is sent to Second Life.
+- Target languages: Brazilian Portuguese (default), English, Spanish, French,
+  German, Italian, Japanese, Korean, Simplified Chinese, Russian, Turkish,
+  Dutch, Polish, or type any other language name.
+- Settings: `FSAIWriterTranslateTo`, `FSAIWriterTranslatorTag` ("Translator"),
+  `FSAIWriterTranslatorColor`, `FSAIWriterTranslateMenu`.
 
-### 2.4 ChatBot (aba na janela Conversations)
-Uma aba fixa logo abaixo de **Nearby Chat**, com um ícone de robô:
+### 2.4 ChatBot (tab in the Conversations window)
+A locked tab right below **Nearby Chat**, with a robot icon:
 ```
-[ conversa ................................................... ]
-[ mensagem para o ChatBot ...... ] [⚙] [Clear] [Send ▴]
+[ conversation ................................................ ]
+[ message the ChatBot ........ ] [⚙] [Clear] [Send ▴]
 ```
-- É uma conversa privada com a sua LLM, **com histórico**. O histórico fica
-  salvo por conta (`ai_chatbot_history.xml`), e as últimas
-  `FSAIChatbotHistoryLength` mensagens vão como contexto.
-- **Send ▴:** a setinha troca entre **Send** e **Send w/o history**. O
-  segundo modo é uma pergunta avulsa: não lê nem altera a conversa e aparece
-  em itálico.
-- **Clear** (ou digitar `/clear`): apaga a conversa.
-- **Acesso à internet** (opcional, `FSAIChatbotWebSearch`): pesquisa a
-  pergunta na web (DuckDuckGo Lite por padrão, ou o seu próprio SearXNG via
-  `FSAIChatbotSearchURL`) e entrega os resultados à IA. As fontes podem
-  aparecer embaixo da resposta, com links clicáveis
-  (`FSAIChatbotShowSources`).
-- **Conhece o Second Life** (`FSAIChatbotSLContext`):
-  - Cada pergunta leva junto a região, o seu avatar, os avatares a até 256 m
-    (com distância) e os amigos online.
-  - Se a pergunta citar um avatar **próximo ou amigo** (por display name,
-    username ou primeiro nome), o viewer busca o **perfil** dele: bio, data de
-    criação da conta, parceiro, grupos, picks e link do perfil web.
-  - Exemplo: *"fale sobre <nome do avatar>"*.
-  - O texto dos perfis é tratado apenas como autodescrição da pessoa, nunca
-    como instrução para a IA.
-  - Respeita as restrições do RLV (@shownames e @showloc).
-- Para esconder a aba: `FSAIChatbotEnabled`.
+- A private conversation with your LLM, **with history**. The history is saved
+  per account (`ai_chatbot_history.xml`), and the last
+  `FSAIChatbotHistoryLength` messages are sent as context.
+- **Send ▴:** the arrow switches between **Send** and **Send w/o history**.
+  The second mode is a one-off question that neither reads nor changes the
+  conversation; it is shown in italics.
+- **Clear** (or typing `/clear`) erases the conversation.
+- **Internet access** (optional, `FSAIChatbotWebSearch`): searches the web for
+  your question (DuckDuckGo Lite by default, or your own SearXNG instance via
+  `FSAIChatbotSearchURL`) and gives the results to the AI. Sources can be
+  listed below the answer as clickable links (`FSAIChatbotShowSources`).
+- **Knows Second Life** (`FSAIChatbotSLContext`):
+  - Every question carries your avatar, the region, avatars within 256 m
+    (with distances) and online friends.
+  - When a question mentions a **nearby avatar or a friend** (by display
+    name, username or a distinctive first name), the viewer fetches their
+    **profile**: bio, account age, partner, groups, picks and web profile.
+  - Example: *"tell me about <avatar name>"*.
+  - Profile text is treated only as that person's self-description, never as
+    instructions to the AI.
+  - RLV restrictions (@shownames, @showloc) are respected.
+- To hide the tab: `FSAIChatbotEnabled`.
 
 ---
 
-## Parte 3 — Ajustes menores
-- **Corretor ortográfico:** já existia no Firestorm (Hunspell, com pt-BR
-  incluído). Só foi preciso disponibilizar os dicionários no build de
-  desenvolvimento.
-- **Fast Timers:** removido o atalho Ctrl+Shift+9 que abria essa janela. No
-  teclado ABNT2, Shift+9 é `(`, então ela abria sem querer. A janela continua
-  em *Advanced > Consoles*.
-- **Build em caminhos com espaço:** corrigido o include do compilador de
-  recursos (`rc.exe`) no CMake.
+## Part 3: Smaller changes
+- **Spell checker:** this already existed in Firestorm (Hunspell, with
+  pt-BR included). The only change was making the dictionaries available in
+  development builds.
+- **Fast Timers:** removed the Ctrl+Shift+9 shortcut. On Brazilian ABNT2
+  keyboards, Shift+9 is `(`, so the profiler kept opening by accident. It is
+  still available under *Advanced > Consoles*.
+- **Building from paths with spaces:** fixed the resource compiler (`rc.exe`)
+  include quoting in CMake.
 
 ---
 
-## Como compilar (Windows)
+## Building (Windows)
 
-Os passos são os mesmos de [`doc/building_windows.md`](doc/building_windows.md).
-Eu usei o Visual Studio 2026 (toolset 14.4x+) e o `AUTOBUILD_VSVER=180`:
+The steps are the same as in [`doc/building_windows.md`](doc/building_windows.md).
+I used Visual Studio 2026 (toolset 14.4x+) with `AUTOBUILD_VSVER=180`:
 
-```bash
+```bat
 set AUTOBUILD_VSVER=180
-set AUTOBUILD_VARIABLES_FILE=<caminho>\fs-build-variables\variables
+set AUTOBUILD_VARIABLES_FILE=<path>\fs-build-variables\variables
 autobuild configure -A 64 -c ReleaseFS_open -- --chan Perf -DLL_TESTS:BOOL=FALSE
 autobuild build -A 64 -c ReleaseFS_open --no-configure
 ```
 
-Sem `--package`, o executável é de desenvolvimento e precisa ser iniciado com
-a **pasta de trabalho em `indra\newview`**, por exemplo:
+Without `--package` you get a development build, which must be started with
+the **working directory set to `indra\newview`**, for example:
 ```bat
 cd /d phoenix-firestorm\indra\newview
 start "" ..\..\build-vc180-64\newview\Release\firestorm-bin.exe
@@ -246,20 +249,22 @@ start "" ..\..\build-vc180-64\newview\Release\firestorm-bin.exe
 
 ---
 
-## Avisos importantes
-- **Não é o Firestorm oficial.** Não peça suporte deste fork à equipe do
-  Firestorm.
-- Se for **distribuir executáveis** para outras pessoas:
-  - use outro nome, sem os logos do Firestorm;
-  - siga a política de marcas da Linden Lab e a
+## Important notes
+- **This is not the official Firestorm.** Please do not ask the Firestorm team
+  for support with this fork.
+- If you **distribute binaries** to other people:
+  - use a different name and none of the Firestorm logos;
+  - follow Linden Lab's trademark policy and the
     [Third Party Viewer Policy](https://secondlife.com/corporate/third-party-viewers);
-  - lembre que os recursos de IA podem enviar texto de outras pessoas
-    (mensagens recebidas, perfis) ao servidor configurado. Deixe isso claro
-    para os usuários e mantenha esses recursos desligados por padrão.
-- Código **vibe coded**: foi revisado e testado, mas pode ter bugs.
+  - remember that the AI features can send other people's text (incoming
+    messages, profiles) to the configured server. Make that clear to your
+    users, and keep those features off by default.
+- This is **vibe-coded** software. It was reviewed and tested, but it may
+  still have bugs.
 
-## Licença
-O código continua sob a **GNU LGPL 2.1**, como o projeto original (veja
-[`doc/LICENSE-source.txt`](doc/LICENSE-source.txt)). Os arquivos novos deste
-fork também são LGPL 2.1. A arte e as marcas seguem as licenças e políticas
-originais da Linden Lab e do Phoenix Firestorm Project.
+## License
+The code remains under the **GNU LGPL 2.1**, like the original project (see
+[`doc/LICENSE-source.txt`](doc/LICENSE-source.txt)). The new files added by
+this fork are LGPL 2.1 as well. Artwork and trademarks remain under the
+original licenses and policies of Linden Lab and The Phoenix Firestorm
+Project.

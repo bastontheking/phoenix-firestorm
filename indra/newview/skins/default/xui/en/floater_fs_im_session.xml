@@ -697,6 +697,11 @@
                name="ai_language_combo">
                 <combo_box.item label="PT-BR" name="pt" value="pt" />
                 <combo_box.item label="EN" name="en" value="en" />
+                <combo_box.item label="ES" name="es" value="es" />
+                <combo_box.item label="FR" name="fr" value="fr" />
+                <combo_box.item label="DE" name="de" value="de" />
+                <combo_box.item label="IT" name="it" value="it" />
+                <combo_box.item label="JA" name="ja" value="ja" />
               </combo_box>
               <combo_box
                follows="right|bottom"
