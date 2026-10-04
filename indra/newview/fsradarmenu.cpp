@@ -36,6 +36,7 @@
 // newview
 #include "llagent.h"
 #include "llavataractions.h"
+#include "fschathistorydelete.h" // <FS:Perf>
 #include "llcallingcard.h"          // for LLAvatarTracker
 #include "lllogchat.h"
 #include "llnetmap.h"
@@ -87,6 +88,7 @@ LLContextMenu* FSRadarMenu::createMenu()
         registrar.add("Avatar.DerenderPermanent",               boost::bind(&LLAvatarActions::derender,                     id, true));
         registrar.add("Avatar.AddToContactSet",                 boost::bind(&FSRadarMenu::addToContactSet,                  this));
         registrar.add("Avatar.Calllog",                         boost::bind(&LLAvatarActions::viewChatHistory,              id));
+        registrar.add("Avatar.DeleteChatHistory",               boost::bind(&FSChatHistoryDelete::deleteForAvatar,          id)); // <FS:Perf>
         registrar.add("Nearby.People.TeleportToAvatar",         boost::bind(&FSRadarMenu::teleportToAvatar,                 this));
         registrar.add("Nearby.People.TrackAvatar",              boost::bind(&FSRadarMenu::onTrackAvatarMenuItemClick,       this));
         registrar.add("Nearby.People.FaceTowardsAvatar",        boost::bind(&FSRadarMenu::onFaceTowardsAvatarMenuItemClick, this));

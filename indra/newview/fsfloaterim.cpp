@@ -31,6 +31,7 @@
 
 #include "fsfloaterim.h"
 #include "fsaichatassist.h" // <FS:Perf>
+#include "fschathistorydelete.h" // <FS:Perf>
 
 #include "fschathistory.h"
 #include "fschatoptionsmenu.h"
@@ -721,6 +722,11 @@ void FSFloaterIM::doToSelected(const LLSD& userdata)
     else if (command == "add_friend")
     {
         LLAvatarActions::requestFriendshipDialog(mOtherParticipantUUID);
+    }
+    else if (command == "delete_history") // <FS:Perf>
+    {
+        FSChatHistoryDelete::deleteForConversation(LLIMModel::instance().getHistoryFileName(mSessionID),
+                                                   LLIMModel::instance().getName(mSessionID), mSessionID);
     }
     else if (command == "history")
     {

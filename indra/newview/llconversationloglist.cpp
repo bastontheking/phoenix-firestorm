@@ -26,6 +26,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "llavataractions.h"
+#include "fschathistorydelete.h" // <FS:Perf>
 #include "llagent.h"
 #include "llfloaterreg.h"
 #include "llfloaterconversationpreview.h"
@@ -368,6 +369,12 @@ void LLConversationLogList::onCustomAction(const LLSD& userdata)
         default:
             break;
         }
+    }
+    else if ("delete_chat_history" == command_name) // <FS:Perf>
+    {
+        FSChatHistoryDelete::deleteForConversation(selected_conversationp->getHistoryFileName(),
+                                                   selected_conversationp->getConversationName(),
+                                                   selected_conversation_session_id);
     }
     else if ("chat_history" == command_name)
     {

@@ -31,6 +31,7 @@
 
 #include "fsradar.h"
 #include "llavataractions.h"
+#include "fschathistorydelete.h" // <FS:Perf>
 #include "lllogchat.h"
 #include "llmenugl.h"
 #include "llslurl.h"
@@ -51,6 +52,7 @@ LLContextMenu* FSContactsFriendsMenu::createMenu()
         registrar.add("Contacts.Friends.RemoveFriend",          boost::bind(&LLAvatarActions::removeFriendDialog,               id));
         registrar.add("Contacts.Friends.SendIM",                boost::bind(&LLAvatarActions::startIM,                          id));
         registrar.add("Contacts.Friends.Calllog",               boost::bind(&LLAvatarActions::viewChatHistory,                  id));
+        registrar.add("Contacts.Friends.DeleteChatHistory",     boost::bind(&FSChatHistoryDelete::deleteForAvatar,              id)); // <FS:Perf>
         registrar.add("Contacts.Friends.OfferTeleport",         boost::bind(&FSContactsFriendsMenu::offerTeleport,              this));
         registrar.add("Contacts.Friends.RequestTeleport",       boost::bind(&LLAvatarActions::teleportRequest,                  id));
         registrar.add("Contacts.Friends.ZoomIn",                boost::bind(&LLAvatarActions::zoomIn,                           id));

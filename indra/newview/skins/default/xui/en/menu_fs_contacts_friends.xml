@@ -27,6 +27,16 @@
          parameter="can_callog"/>
     </menu_item_call>
     <menu_item_call
+     label="Delete chat history..."
+     layout="topleft"
+     name="delete_chat_history">
+        <menu_item_call.on_click
+         function="Contacts.Friends.DeleteChatHistory"/>
+        <menu_item_call.on_enable
+         function="Contacts.Friends.EnableItem"
+         parameter="can_callog"/>
+    </menu_item_call>
+    <menu_item_call
      label="Add to Set..."
      layout="topleft"
      name="Add to Set">

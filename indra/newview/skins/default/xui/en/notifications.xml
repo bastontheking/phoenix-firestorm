@@ -15545,4 +15545,29 @@ Folder names cannot contain / or \.
   </notification>
   <!-- </FS:Amy> Favorite Wearables folders -->
 
+  <notification
+   icon="alertmodal.tga"
+   name="FSDeleteChatHistoryConfirm"
+   type="alertmodal">
+Delete the saved chat history with [NAME]?
+
+The transcript files of this conversation will be removed from this computer. This cannot be undone.
+    <tag>confirm</tag>
+    <usetemplate
+     name="okcancelbuttons"
+     notext="Cancel"
+     yestext="Delete"/>
+  </notification>
+  <notification
+   icon="notifytip.tga"
+   name="FSDeleteChatHistoryDone"
+   type="notifytip">
+Chat history with [NAME] deleted.
+  </notification>
+  <notification
+   icon="notifytip.tga"
+   name="FSDeleteChatHistoryNone"
+   type="notifytip">
+There is no saved chat history with [NAME].
+  </notification>
 </notifications>

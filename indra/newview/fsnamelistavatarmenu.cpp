@@ -32,6 +32,7 @@
 #include "fsradar.h"
 #include "llagent.h"
 #include "llavataractions.h"
+#include "fschathistorydelete.h" // <FS:Perf>
 #include "lllogchat.h"
 #include "llmenugl.h"
 #include "llslurl.h"
@@ -51,6 +52,7 @@ LLContextMenu* FSNameListAvatarMenu::createMenu()
         registrar.add("Namelist.ShowProfile",                   boost::bind(&LLAvatarActions::showProfile,                      id));
         registrar.add("Namelist.SendIM",                        boost::bind(&LLAvatarActions::startIM,                          id));
         registrar.add("Namelist.Calllog",                       boost::bind(&LLAvatarActions::viewChatHistory,                  id));
+        registrar.add("Namelist.DeleteChatHistory",             boost::bind(&FSChatHistoryDelete::deleteForAvatar,              id)); // <FS:Perf>
         registrar.add("Namelist.AddFriend",                     boost::bind(&LLAvatarActions::requestFriendshipDialog,          id));
         registrar.add("Namelist.AddToContactSet",               boost::bind(&FSNameListAvatarMenu::addToContactSet,             this));
         registrar.add("Namelist.ZoomIn",                        boost::bind(&LLAvatarActions::zoomIn,                           id));
