@@ -232,7 +232,7 @@
           auto_resize="false"
           user_resize="false"
           visible="false"
-          height="84"
+          height="68"
           name="ai_suggestions_layout_panel">
           <text
            follows="left|top|right"
@@ -325,12 +325,12 @@
               auto_resize="false"
               user_resize="false"
               name="ai_writer_layout_panel"
-              width="196">
+              width="206">
               <combo_box
                follows="right|bottom"
                bottom="-1"
                height="23"
-               width="62"
+               width="72"
                left="1"
                control_name="FSAIWriterLanguage"
                tool_tip="Language the AI writes the suggestions in"
