@@ -280,17 +280,22 @@ void FSFloaterAIChatbot::askModel(const std::string& question, const std::string
         messages.insert(messages.end(), context.rbegin(), context.rend());
     }
 
+    static LLCachedControl<bool> show_sources(gSavedSettings, "FSAIChatbotShowSources", true);
     std::string prompt = question;
     if (!web_context.empty())
     {
         prompt = "Web search results for the question below:\n\n" + web_context +
-                 "Using these results where relevant (cite them as (1), (2), ...), answer:\n" + question;
+                 (show_sources
+                    ? "Using these results where relevant (cite them as (1), (2), ...), answer:\n"
+                    : "Using these results where relevant (do not mention or number the sources), answer:\n") +
+                 question;
     }
+    const std::string shown_sources = show_sources ? sources : std::string();
     messages.push_back({ "user", prompt });
 
     setBusy(true, getString("thinking"));
     LLHandle<LLFloater> handle = getHandle();
-    FSAIWriter::chat(messages, [handle, sources](bool success, const std::string& reply, const std::string& error)
+    FSAIWriter::chat(messages, [handle, sources = shown_sources](bool success, const std::string& reply, const std::string& error)
     {
         FSFloaterAIChatbot* self = static_cast<FSFloaterAIChatbot*>(handle.get());
         if (!self)

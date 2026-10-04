@@ -3,7 +3,7 @@
  name="fs_ai_writer"
  title="AI Chat Assistant Settings"
  can_resize="false"
- height="330"
+ height="352"
  width="440"
  layout="topleft"
  save_rect="true">
@@ -150,7 +150,7 @@
    top_pad="10"
    height="16"
    width="300"
-   label="ChatBot: search the web for each question"
+   label="ChatBot: allow internet access (web search)"
    tool_tip="The question is searched on the web (FSAIChatbotSearchURL, DuckDuckGo by default) and the results are given to the AI, which cites them"
    control_name="FSAIChatbotWebSearch"
    name="chatbot_websearch_check" />
@@ -164,6 +164,17 @@
    label="Clear history"
    tool_tip="Erase the ChatBot (History) conversation"
    name="chatbot_clear_btn" />
+  <check_box
+   follows="left|top"
+   layout="topleft"
+   left="10"
+   top_pad="4"
+   height="16"
+   width="300"
+   label="ChatBot: show the web sources below answers"
+   tool_tip="List the web pages the answer was based on (only when internet access is on)"
+   control_name="FSAIChatbotShowSources"
+   name="chatbot_sources_check" />
 
   <text
    follows="left|top|right"
