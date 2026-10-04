@@ -170,7 +170,7 @@ class FSChatHistory : public LLTextEditor   // <FS:Zi> FIRE-8600: TAB out of cha
             std::string mText;
         };
         std::deque<RecentMessage> mRecentMessages;
-        bool findMessageAtCursor(std::string& from, std::string& text) const;
+        bool findMessageAtCursor(std::string& from, std::string& text, std::string* line = nullptr) const;
 
     // <FS_Zi> FIRE-8602: Typing in chat history focuses chat input line
     public:

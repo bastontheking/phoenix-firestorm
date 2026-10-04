@@ -1463,7 +1463,7 @@ std::string applyModeratorStyle(U32 moderator_style)
 static LLTrace::BlockTimerStatHandle FTM_APPEND_MESSAGE("Append Chat Message");
 
 // <FS:Perf> AI translation of a message, triggered from the context menu
-bool FSChatHistory::findMessageAtCursor(std::string& from, std::string& text) const
+bool FSChatHistory::findMessageAtCursor(std::string& from, std::string& text, std::string* line) const
 {
     const LLWString& wtext = getWText();
     if (wtext.empty())
@@ -1483,6 +1483,10 @@ bool FSChatHistory::findMessageAtCursor(std::string& from, std::string& text) co
         ++end;
     }
     std::string paragraph = wstring_to_utf8str(wtext.substr(start, end - start));
+    if (line)
+    {
+        *line = paragraph; // exact text, used to find the line again later
+    }
     LLStringUtil::trim(paragraph);
     if (paragraph.empty())
     {
@@ -1525,14 +1529,14 @@ bool FSChatHistory::canTranslateMessageAtCursor() const
 
 void FSChatHistory::translateMessageAtCursor()
 {
-    std::string from, text;
-    if (!findMessageAtCursor(from, text))
+    std::string from, text, original_line;
+    if (!findMessageAtCursor(from, text, &original_line))
     {
         return;
     }
 
     LLHandle<LLView> handle = getHandle();
-    FSAIWriter::translate(text, [handle, from](bool success, const std::string& translation, const std::string& error)
+    FSAIWriter::translate(text, [handle, from, original_line](bool success, const std::string& translation, const std::string& error)
     {
         FSChatHistory* self = dynamic_cast<FSChatHistory*>(handle.get());
         if (!self)
@@ -1540,10 +1544,14 @@ void FSChatHistory::translateMessageAtCursor()
             return; // chat window closed meanwhile
         }
 
+        // Same font and size as regular chat text, in italics.
         LLUIColor color = LLUIColorTable::instance().getColor("SystemChatColor");
+        LLFontGL* fontp = LLViewerChat::getChatFont();
         LLStyle::Params style;
         style.color(color);
         style.readonly_color(color);
+        style.font.name(LLFontGL::nameFromFont(fontp));
+        style.font.size(LLFontGL::sizeFromFont(fontp));
         style.font.style("ITALIC");
 
         static LLCachedControl<std::string> tag(gSavedSettings, "FSAIWriterTranslatorTag", "Tradutor");
@@ -1558,7 +1566,32 @@ void FSChatHistory::translateMessageAtCursor()
         }
 
         const bool at_bottom = self->mScroller->isAtBottom();
-        self->appendText(line, true, style);
+
+        // Put the translation right below the original line. The history may
+        // have changed while waiting for the AI (new messages, trimming), so
+        // look the line up again, newest occurrence first.
+        const LLWString& wtext = self->getWText();
+        const LLWString anchor = utf8str_to_wstring(original_line);
+        const size_t found = anchor.empty() ? LLWString::npos : wtext.rfind(anchor);
+        if (found != LLWString::npos)
+        {
+            size_t insert_pos = found + anchor.size();
+            while (insert_pos < wtext.size() && wtext[insert_pos] != '\n')
+            {
+                ++insert_pos;
+            }
+            const LLWString inserted = utf8str_to_wstring("\n" + line);
+            const S32 pos = (S32)insert_pos;
+            LLTextBase::segment_vec_t segments;
+            segments.push_back(new LLNormalTextSegment(LLStyleConstSP(new LLStyle(style)), pos, pos + (S32)inserted.size(), *self));
+            self->insertStringNoUndo(pos, inserted, &segments);
+            self->needsReflow();
+        }
+        else
+        {
+            self->appendText(line, true, style);
+        }
+
         if (at_bottom)
         {
             self->mScrollToBottom = true;
