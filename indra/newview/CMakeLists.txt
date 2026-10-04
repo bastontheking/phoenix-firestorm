@@ -100,6 +100,7 @@ set(viewer_SOURCE_FILES
     fsprimfeedauth.cpp
     exogroupmutelist.cpp
     floatermedialists.cpp
+    fsaiwriter.cpp
     fsareasearch.cpp
     fsareasearchmenu.cpp
     fsassetblacklist.cpp
@@ -117,6 +118,7 @@ set(viewer_SOURCE_FILES
     fsfloateraddtocontactset.cpp
     fsfavoritegroups.cpp
     fsinventorycustomtabs.cpp
+    fsfloateraiwriter.cpp
     fsfloaterassetblacklist.cpp
     fsfloateravataralign.cpp
     fsfloateravatarrendersettings.cpp
@@ -967,6 +969,7 @@ set(viewer_HEADER_FILES
     fsprimfeedauth.h
     exogroupmutelist.h
     floatermedialists.h
+    fsaiwriter.h
     fsareasearch.h
     fsareasearchmenu.h
     fsassetblacklist.h
@@ -986,6 +989,7 @@ set(viewer_HEADER_FILES
     fsfloateraddtocontactset.h
     fsfavoritegroups.h
     fsinventorycustomtabs.h
+    fsfloateraiwriter.h
     fsfloaterassetblacklist.h
     fsfloateravatarrendersettings.h
     fsfloaterbigpreview.h

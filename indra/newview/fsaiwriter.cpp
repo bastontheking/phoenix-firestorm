@@ -1,0 +1,394 @@
+/**
+ * @file fsaiwriter.cpp
+ * @brief Chat writing assistant backed by a user-configured, OpenAI-compatible LLM endpoint
+ *
+ * $LicenseInfo:firstyear=2026&license=viewerlgpl$
+ * Phoenix Firestorm Viewer Source Code
+ * Copyright (C) 2026, The Phoenix Firestorm Project, Inc.
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation;
+ * version 2.1 of the License only.
+ *
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ * $/LicenseInfo$
+ */
+
+#include "llviewerprecompiledheaders.h"
+
+#include "fsaiwriter.h"
+
+#include "llcorehttputil.h"
+#include "llcoros.h"
+#include "llhttpconstants.h"
+#include "llviewercontrol.h"
+
+#include <boost/json.hpp>
+
+namespace
+{
+    constexpr size_t MAX_SUGGESTIONS = 3;
+
+    std::string trim(const std::string& in)
+    {
+        std::string s = in;
+        LLStringUtil::trim(s);
+        return s;
+    }
+
+    // Read the assistant text from an OpenAI-style response:
+    // { "choices": [ { "message": { "content": "..." } } ] }
+    // (also accepts the legacy completions "text" field)
+    bool extractContent(const boost::json::value& root, std::string& content, std::string& error)
+    {
+        if (!root.is_object())
+        {
+            error = "Unexpected response from the server";
+            return false;
+        }
+        const boost::json::object& obj = root.as_object();
+        if (const boost::json::value* err = obj.if_contains("error"))
+        {
+            if (err->is_object() && err->as_object().if_contains("message") && err->as_object().at("message").is_string())
+            {
+                error = std::string(err->as_object().at("message").as_string());
+            }
+            else if (err->is_string())
+            {
+                error = std::string(err->as_string());
+            }
+            else
+            {
+                error = "The server returned an error";
+            }
+            return false;
+        }
+        const boost::json::value* choices = obj.if_contains("choices");
+        if (!choices || !choices->is_array() || choices->as_array().empty() || !choices->as_array()[0].is_object())
+        {
+            error = "The server response has no choices";
+            return false;
+        }
+        const boost::json::object& choice = choices->as_array()[0].as_object();
+        if (const boost::json::value* message = choice.if_contains("message"))
+        {
+            if (message->is_object())
+            {
+                const boost::json::value* c = message->as_object().if_contains("content");
+                if (c && c->is_string())
+                {
+                    content = std::string(c->as_string());
+                    return true;
+                }
+            }
+        }
+        if (const boost::json::value* text = choice.if_contains("text"))
+        {
+            if (text->is_string())
+            {
+                content = std::string(text->as_string());
+                return true;
+            }
+        }
+        error = "The server response has no text";
+        return false;
+    }
+
+    LLCore::HttpHeaders::ptr_t makeHeaders()
+    {
+        LLCore::HttpHeaders::ptr_t headers = std::make_shared<LLCore::HttpHeaders>();
+        headers->append(HTTP_OUT_HEADER_CONTENT_TYPE, HTTP_CONTENT_JSON);
+        headers->append(HTTP_OUT_HEADER_ACCEPT, HTTP_CONTENT_JSON);
+        const std::string api_key = trim(gSavedSettings.getString("FSAIWriterApiKey"));
+        if (!api_key.empty())
+        {
+            headers->append("Authorization", "Bearer " + api_key);
+        }
+        return headers;
+    }
+
+    LLCore::HttpOptions::ptr_t makeOptions()
+    {
+        LLCore::HttpOptions::ptr_t options = std::make_shared<LLCore::HttpOptions>();
+        const U32 timeout = llclamp(gSavedSettings.getU32("FSAIWriterTimeout"), 5U, 600U);
+        options->setTimeout(timeout);
+        options->setTransferTimeout(timeout);
+        options->setRetries(0);
+        return options;
+    }
+
+    std::string describeFailure(const LLSD& result)
+    {
+        const LLCore::HttpStatus status = LLCoreHttpUtil::HttpCoroutineAdapter::getStatusFromLLSD(result[LLCoreHttpUtil::HttpCoroutineAdapter::HTTP_RESULTS]);
+        std::string msg = status.toString();
+        if (status == LLCore::HttpStatus(LLCore::HttpStatus::EXT_CURL_EASY, CURLE_COULDNT_CONNECT))
+        {
+            msg = "Could not connect to the AI server. Check that it is running and that the address is correct.";
+        }
+        else if (status == LLCore::HttpStatus(LLCore::HttpStatus::EXT_CURL_EASY, CURLE_OPERATION_TIMEDOUT))
+        {
+            msg = "The AI server took too long to answer (FSAIWriterTimeout).";
+        }
+        return msg;
+    }
+}
+
+// static
+const std::vector<std::string>& FSAIWriter::getStyleKeys()
+{
+    static const std::vector<std::string> keys{ "nicer", "formal", "casual", "romantic", "funny", "fix", "to_en", "to_pt" };
+    return keys;
+}
+
+// static
+std::string FSAIWriter::getStyleInstruction(const std::string& style)
+{
+    if (style == "formal")   return "Rewrite it in a polite, formal and well-written way.";
+    if (style == "casual")   return "Rewrite it in a relaxed, friendly and natural chat tone.";
+    if (style == "romantic") return "Rewrite it in a sweet, charming and romantic way, without being over the top.";
+    if (style == "funny")    return "Rewrite it in a witty, playful and funny way.";
+    if (style == "fix")      return "Only fix spelling, grammar, accents and punctuation. Keep the wording and tone as close to the original as possible.";
+    if (style == "to_en")    return "Translate it into natural, fluent English, as a native speaker would write it in a chat.";
+    if (style == "to_pt")    return "Translate it into natural, fluent Brazilian Portuguese, as a native speaker would write it in a chat.";
+    return "Rewrite it so it reads more beautifully, clearly and naturally, with correct spelling and grammar.";
+}
+
+// static
+std::string FSAIWriter::getModelsUrl(const std::string& chat_url)
+{
+    std::string url = trim(chat_url);
+    const std::string suffix = "/chat/completions";
+    if (url.size() >= suffix.size() && url.compare(url.size() - suffix.size(), suffix.size(), suffix) == 0)
+    {
+        return url.substr(0, url.size() - suffix.size()) + "/models";
+    }
+    while (!url.empty() && url.back() == '/')
+    {
+        url.pop_back();
+    }
+    return url + "/models";
+}
+
+// static
+std::vector<std::string> FSAIWriter::parseSuggestions(const std::string& raw_content)
+{
+    std::string content = raw_content;
+
+    // Reasoning models (DeepSeek-R1, Qwen3, ...) may prepend their thinking.
+    for (const char* tag : { "</think>", "</thinking>" })
+    {
+        const size_t end = content.rfind(tag);
+        if (end != std::string::npos)
+        {
+            content = content.substr(end + strlen(tag));
+        }
+    }
+
+    std::vector<std::string> out;
+    std::istringstream lines(content);
+    std::string line;
+    while (std::getline(lines, line) && out.size() < MAX_SUGGESTIONS)
+    {
+        line = trim(line);
+        if (line.empty())
+        {
+            continue;
+        }
+        // Drop list markers: "1." "2)" "-" "*" "•"
+        size_t pos = 0;
+        while (pos < line.size() && isdigit((unsigned char)line[pos]))
+        {
+            ++pos;
+        }
+        if (pos > 0 && pos < line.size() && (line[pos] == '.' || line[pos] == ')' || line[pos] == ':'))
+        {
+            line = trim(line.substr(pos + 1));
+        }
+        else if (line.rfind("- ", 0) == 0 || line.rfind("* ", 0) == 0)
+        {
+            line = trim(line.substr(2));
+        }
+        else if (line.rfind("\xE2\x80\xA2", 0) == 0) // bullet
+        {
+            line = trim(line.substr(3));
+        }
+        // Drop surrounding quotes (ASCII or typographic)
+        if (line.size() >= 2 && line.front() == '"' && line.back() == '"')
+        {
+            line = trim(line.substr(1, line.size() - 2));
+        }
+        if (line.size() >= 6 && line.rfind("\xE2\x80\x9C", 0) == 0 && line.compare(line.size() - 3, 3, "\xE2\x80\x9D") == 0)
+        {
+            line = trim(line.substr(3, line.size() - 6));
+        }
+        // Skip chatter such as "Here are three options:"
+        if (!line.empty() && line.back() == ':' && out.empty())
+        {
+            continue;
+        }
+        if (!line.empty())
+        {
+            out.push_back(line);
+        }
+    }
+
+    if (out.empty())
+    {
+        const std::string whole = trim(content);
+        if (!whole.empty())
+        {
+            out.push_back(whole);
+        }
+    }
+    return out;
+}
+
+// static
+void FSAIWriter::rewrite(const std::string& text, const std::string& style, bool more_creative, rewrite_callback_t callback)
+{
+    LLCoros::instance().launch("FSAIWriter::rewriteCoro",
+        [text, style, more_creative, callback]() { rewriteCoro(text, style, more_creative, callback); });
+}
+
+// static
+void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_creative, rewrite_callback_t callback)
+{
+    Result res;
+    const std::string url = trim(gSavedSettings.getString("FSAIWriterEndpoint"));
+    if (url.empty())
+    {
+        res.mError = "No AI server configured (FSAIWriterEndpoint).";
+        callback(res);
+        return;
+    }
+
+    const std::string system_prompt =
+        "You are a writing assistant for chat messages in the virtual world Second Life. "
+        "The user gives you a message they are about to send. " + getStyleInstruction(style) + " "
+        "Keep the original meaning, keep it short like a chat message, keep names, emojis and "
+        "Second Life terms unchanged, and keep the same language as the original unless asked to translate. "
+        "Reply with exactly three alternative versions, one per line, with no numbering, no quotes "
+        "and no explanations.";
+
+    boost::json::object body;
+    const std::string model = trim(gSavedSettings.getString("FSAIWriterModel"));
+    if (!model.empty())
+    {
+        body["model"] = model;
+    }
+    boost::json::array messages;
+    messages.push_back(boost::json::object{ { "role", "system" }, { "content", system_prompt } });
+    messages.push_back(boost::json::object{ { "role", "user" }, { "content", text } });
+    body["messages"] = std::move(messages);
+    body["temperature"] = more_creative ? 1.0 : 0.6;
+    body["max_tokens"] = 600;
+    body["stream"] = false;
+
+    const std::string payload = boost::json::serialize(body);
+    LLCore::BufferArray::ptr_t raw(new LLCore::BufferArray());
+    raw->append(payload.data(), payload.size());
+
+    LLCoreHttpUtil::HttpCoroutineAdapter adapter("FSAIWriter", LLCore::HttpRequest::DEFAULT_POLICY_ID);
+    LLCore::HttpRequest::ptr_t request = std::make_shared<LLCore::HttpRequest>();
+    LLSD result = adapter.postRawAndSuspend(request, url, raw, makeOptions(), makeHeaders());
+
+    const LLCore::HttpStatus status = LLCoreHttpUtil::HttpCoroutineAdapter::getStatusFromLLSD(result[LLCoreHttpUtil::HttpCoroutineAdapter::HTTP_RESULTS]);
+    const LLSD::Binary& raw_body = result[LLCoreHttpUtil::HttpCoroutineAdapter::HTTP_RESULTS_RAW].asBinary();
+    const std::string response(raw_body.begin(), raw_body.end());
+
+    boost::system::error_code ec;
+    boost::json::value root;
+    if (!response.empty())
+    {
+        root = boost::json::parse(response, ec);
+    }
+
+    std::string content;
+    if (!status)
+    {
+        std::string server_error;
+        if (!ec.failed() && !response.empty())
+        {
+            extractContent(root, content, server_error);
+        }
+        res.mError = server_error.empty() ? describeFailure(result) : server_error;
+    }
+    else if (response.empty() || ec.failed())
+    {
+        res.mError = "The AI server returned an invalid response.";
+    }
+    else if (extractContent(root, content, res.mError))
+    {
+        res.mSuggestions = parseSuggestions(content);
+        res.mSuccess = !res.mSuggestions.empty();
+        if (!res.mSuccess)
+        {
+            res.mError = "The AI returned an empty answer.";
+        }
+    }
+
+    if (!res.mSuccess)
+    {
+        LL_WARNS("AIWriter") << "Rewrite request to " << url << " failed: " << res.mError << LL_ENDL;
+    }
+    callback(res);
+}
+
+// static
+void FSAIWriter::fetchModels(models_callback_t callback)
+{
+    LLCoros::instance().launch("FSAIWriter::fetchModelsCoro", [callback]() { fetchModelsCoro(callback); });
+}
+
+// static
+void FSAIWriter::fetchModelsCoro(models_callback_t callback)
+{
+    std::vector<std::string> models;
+    const std::string url = getModelsUrl(gSavedSettings.getString("FSAIWriterEndpoint"));
+
+    LLCoreHttpUtil::HttpCoroutineAdapter adapter("FSAIWriterModels", LLCore::HttpRequest::DEFAULT_POLICY_ID);
+    LLCore::HttpRequest::ptr_t request = std::make_shared<LLCore::HttpRequest>();
+    LLSD result = adapter.getRawAndSuspend(request, url, makeOptions(), makeHeaders());
+
+    const LLCore::HttpStatus status = LLCoreHttpUtil::HttpCoroutineAdapter::getStatusFromLLSD(result[LLCoreHttpUtil::HttpCoroutineAdapter::HTTP_RESULTS]);
+    if (!status)
+    {
+        callback(false, models, describeFailure(result));
+        return;
+    }
+
+    const LLSD::Binary& raw_body = result[LLCoreHttpUtil::HttpCoroutineAdapter::HTTP_RESULTS_RAW].asBinary();
+    boost::system::error_code ec;
+    boost::json::value root = boost::json::parse(std::string(raw_body.begin(), raw_body.end()), ec);
+    // OpenAI style: { "data": [ { "id": "model-name" }, ... ] }
+    if (!ec.failed() && root.is_object())
+    {
+        if (const boost::json::value* data = root.as_object().if_contains("data"))
+        {
+            if (data->is_array())
+            {
+                for (const boost::json::value& entry : data->as_array())
+                {
+                    if (entry.is_object() && entry.as_object().if_contains("id") && entry.as_object().at("id").is_string())
+                    {
+                        models.emplace_back(entry.as_object().at("id").as_string());
+                    }
+                }
+            }
+        }
+    }
+    if (models.empty())
+    {
+        callback(false, models, "The server did not list any models.");
+        return;
+    }
+    callback(true, models, "");
+}

@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<floater
+ name="fs_ai_writer"
+ title="AI Writing Helper"
+ help_topic="fs_ai_writer"
+ can_resize="true"
+ height="440"
+ width="460"
+ min_height="440"
+ min_width="360"
+ layout="topleft"
+ save_rect="true">
+  <floater.string name="thinking">Asking the AI...</floater.string>
+  <floater.string name="ready">Pick a suggestion, edit it if you like, then press Use.</floater.string>
+  <floater.string name="empty_text">Type a message in the chat box first.</floater.string>
+  <floater.string name="no_target">The chat box this text came from is no longer open.</floater.string>
+  <floater.string name="fetching_models">Asking the server for its models...</floater.string>
+
+  <text
+   follows="left|top"
+   layout="topleft"
+   left="10"
+   top="8"
+   height="16"
+   width="50"
+   name="style_label">
+    Style:
+  </text>
+  <combo_box
+   follows="left|top|right"
+   layout="topleft"
+   left_pad="4"
+   top_delta="-3"
+   height="22"
+   right="-10"
+   name="style_combo"
+   control_name="FSAIWriterStyle">
+    <combo_box.item label="More beautiful / natural" name="nicer" value="nicer" />
+    <combo_box.item label="Formal / polite" name="formal" value="formal" />
+    <combo_box.item label="Casual / friendly" name="casual" value="casual" />
+    <combo_box.item label="Romantic" name="romantic" value="romantic" />
+    <combo_box.item label="Funny" name="funny" value="funny" />
+    <combo_box.item label="Only fix mistakes" name="fix" value="fix" />
+    <combo_box.item label="Translate to English" name="to_en" value="to_en" />
+    <combo_box.item label="Translate to Portuguese (Brazil)" name="to_pt" value="to_pt" />
+  </combo_box>
+
+  <text
+   follows="left|top"
+   layout="topleft"
+   left="10"
+   top_pad="8"
+   height="16"
+   width="200"
+   name="original_label">
+    Your message:
+  </text>
+  <text_editor
+   follows="left|top|right"
+   layout="topleft"
+   left="10"
+   right="-10"
+   top_pad="2"
+   height="40"
+   word_wrap="true"
+   max_length="3070"
+   name="original_text" />
+
+  <text
+   follows="left|top"
+   layout="topleft"
+   left="10"
+   top_pad="8"
+   height="16"
+   width="300"
+   name="suggestions_label">
+    Suggestions (double-click to use):
+  </text>
+  <scroll_list
+   follows="left|top|right|bottom"
+   layout="topleft"
+   left="10"
+   right="-10"
+   top_pad="2"
+   height="90"
+   draw_heading="false"
+   multi_select="false"
+   name="suggestions_list">
+    <scroll_list.columns name="text" relative_width="1" />
+  </scroll_list>
+
+  <text
+   follows="left|bottom"
+   layout="topleft"
+   left="10"
+   top_pad="8"
+   height="16"
+   width="300"
+   name="result_label">
+    Text that will go to the chat box:
+  </text>
+  <text_editor
+   follows="left|bottom|right"
+   layout="topleft"
+   left="10"
+   right="-10"
+   top_pad="2"
+   height="44"
+   word_wrap="true"
+   max_length="3070"
+   spellcheck="true"
+   name="result_text" />
+
+  <text
+   follows="left|bottom|right"
+   layout="topleft"
+   left="10"
+   right="-10"
+   top_pad="4"
+   height="28"
+   wrap="true"
+   name="status_text" />
+
+  <button
+   follows="left|bottom"
+   layout="topleft"
+   left="10"
+   top_pad="2"
+   height="23"
+   width="90"
+   label="Use"
+   tool_tip="Put this text in the chat box (it is not sent automatically)"
+   name="use_btn" />
+  <button
+   follows="left|bottom"
+   layout="topleft"
+   left_pad="6"
+   top_delta="0"
+   height="23"
+   width="110"
+   label="Another idea"
+   tool_tip="Ask again for more creative suggestions"
+   name="retry_btn" />
+  <button
+   follows="right|bottom"
+   layout="topleft"
+   right="-10"
+   top_delta="0"
+   height="23"
+   width="80"
+   label="Close"
+   name="close_btn" />
+
+  <view_border
+   follows="left|bottom|right"
+   layout="topleft"
+   left="10"
+   right="-10"
+   top_pad="8"
+   height="1"
+   bevel_style="in"
+   name="settings_separator" />
+
+  <text
+   follows="left|bottom"
+   layout="topleft"
+   left="10"
+   top_pad="6"
+   height="16"
+   width="50"
+   name="endpoint_label">
+    Server:
+  </text>
+  <line_editor
+   follows="left|bottom|right"
+   layout="topleft"
+   left_pad="4"
+   top_delta="-3"
+   height="22"
+   right="-10"
+   max_length_bytes="512"
+   tool_tip="OpenAI-compatible chat completions URL. llama.cpp (llama-server): http://SERVER-IP:8080/v1/chat/completions - LM Studio: http://localhost:1234/v1/chat/completions - Ollama: http://localhost:11434/v1/chat/completions - another PC: use its IP address."
+   control_name="FSAIWriterEndpoint"
+   name="endpoint_editor" />
+
+  <text
+   follows="left|bottom"
+   layout="topleft"
+   left="10"
+   top_pad="6"
+   height="16"
+   width="50"
+   name="model_label">
+    Model:
+  </text>
+  <combo_box
+   follows="left|bottom|right"
+   layout="topleft"
+   left_pad="4"
+   top_delta="-3"
+   height="22"
+   right="-110"
+   allow_text_entry="true"
+   max_chars="256"
+   tool_tip="Model name on the server. Leave empty to use the server default (LM Studio uses the loaded model)."
+   name="model_combo" />
+  <button
+   follows="right|bottom"
+   layout="topleft"
+   right="-10"
+   top_delta="0"
+   height="22"
+   width="95"
+   label="Load models"
+   tool_tip="Ask the server which models it offers"
+   name="fetch_models_btn" />
+</floater>

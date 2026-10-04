@@ -30,6 +30,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "fsfloaterim.h"
+#include "fsfloateraiwriter.h" // <FS:Perf>
 
 #include "fschathistory.h"
 #include "fschatoptionsmenu.h"
@@ -1030,6 +1031,12 @@ bool FSFloaterIM::postBuild()
 
     static bool usePrettyEmojiButton = gSavedSettings.getBOOL("FSUsePrettyEmojiButton");
     static bool useBWEmojis = gSavedSettings.getBOOL("FSUseBWEmojis");
+    // <FS:Perf> AI writing helper (user-configured local LLM)
+    if (LLButton* ai_btn = findChild<LLButton>("ai_writer_btn"))
+    {
+        ai_btn->setClickedCallback([this](LLUICtrl*, const LLSD&) { FSFloaterAIWriter::showFor(mInputEditor); });
+    }
+    // </FS:Perf>
     mEmojiPickerToggleBtn = getChild<LLButton>("emoji_picker_toggle_btn");
     if (usePrettyEmojiButton)
     {

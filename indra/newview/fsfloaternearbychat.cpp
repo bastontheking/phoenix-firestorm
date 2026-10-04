@@ -31,6 +31,7 @@
 #include "llviewerprecompiledheaders.h"
 
 #include "fsfloaternearbychat.h"
+#include "fsfloateraiwriter.h" // <FS:Perf>
 
 #include "chatbar_as_cmdline.h"
 #include "fschathistory.h"
@@ -184,6 +185,12 @@ bool FSFloaterNearbyChat::postBuild()
 
     static bool usePrettyEmojiButton = gSavedSettings.getBOOL( "FSUsePrettyEmojiButton" );
     static bool useBWEmojis = gSavedSettings.getBOOL( "FSUseBWEmojis" );
+    // <FS:Perf> AI writing helper (user-configured local LLM)
+    if (LLButton* ai_btn = findChild<LLButton>("ai_writer_btn"))
+    {
+        ai_btn->setClickedCallback([this](LLUICtrl*, const LLSD&) { FSFloaterAIWriter::showFor(mInputEditor); });
+    }
+    // </FS:Perf>
     mEmojiPickerToggleBtn = getChild<LLButton>("emoji_picker_toggle_btn");
     if (usePrettyEmojiButton)
     {
