@@ -272,7 +272,41 @@ conversation keep their own copies.
 
 ---
 
-## Part 4: Smaller changes
+## Part 4: Look-at highlight
+
+Every viewer broadcasts a "look at" point for its avatar, and Firestorm can
+already show these as small crosshairs (*Preferences > Privacy > Show look at
+targets*). This fork adds a **highlight mode**: the option
+**Highlight lookat targets** in the same place (`FSLookAtHighlight`).
+
+- **Marker:** two camera-facing rings and a large crosshair. It keeps the same
+  size on screen at any distance (`FSLookAtHighlightScale`) and stays visible
+  through walls and objects.
+- **Line:** a line runs from the avatar's head to the point.
+- **Label:** the marker shows a large name (if names are enabled) and **what
+  the person is doing**:
+
+| Label | Meaning |
+|---|---|
+| **ZOOM / CAMERA FOCUS** | Their camera is focused there, e.g. alt-click zoom. |
+| **CLICKED / SELECTED** | They clicked, touched, grabbed or are editing that object, at that exact point. |
+| **MOUSELOOK** | They are in mouselook. |
+| looking around, hovering, in conversation, responding | Other states their viewer reports. |
+
+What is **not** available, because viewers never send it:
+- how far the camera is zoomed;
+- the camera's position;
+- clicks on menus, HUDs or the UI.
+
+A script can only read someone's camera if that person grants it permission.
+
+This shows only data that other viewers already broadcast:
+- people who enable *Don't send my look at targets to others* do not appear;
+- names follow RLV `@shownames` restrictions.
+
+---
+
+## Part 5: Smaller changes
 - **Spell checker:** this already existed in Firestorm (Hunspell, with
   pt-BR included). The only change was making the dictionaries available in
   development builds.
