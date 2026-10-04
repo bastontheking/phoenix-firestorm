@@ -42,6 +42,7 @@
 #include "llselectmgr.h"
 #include "llglheaders.h"
 #include "llhudrender.h"
+#include "llviewercamera.h" // <FS:Perf>
 #include "llresmgr.h"
 #include "llviewerwindow.h"
 #include "llavatarnamecache.h"
@@ -705,6 +706,56 @@ void LLHUDEffectLookAt::setSourceObject(LLViewerObject* objectp)
 //-----------------------------------------------------------------------------
 // render()
 //-----------------------------------------------------------------------------
+// <FS:Perf> Look-at highlight helpers
+namespace
+{
+    // World size that keeps the marker at roughly the same on-screen size.
+    F32 lookAtHighlightSize(const LLVector3& target)
+    {
+        static LLCachedControl<F32> scale(gSavedSettings, "FSLookAtHighlightScale", 0.03f);
+        const F32 distance = (target - LLViewerCamera::getInstance()->getOrigin()).length();
+        return llclamp(distance * (F32)scale, 0.08f, 8.f);
+    }
+
+    // Two camera-facing rings and a large crosshair at the target.
+    void renderHighlight(const LLVector3& target, const LLColor3& color)
+    {
+        const F32 size = lookAtHighlightSize(target);
+        const LLVector3 left = LLViewerCamera::getInstance()->getLeftAxis();
+        const LLVector3 up = LLViewerCamera::getInstance()->getUpAxis();
+        constexpr S32 SEGMENTS = 32;
+
+        gGL.getTexUnit(0)->unbind(LLTexUnit::TT_TEXTURE);
+        gGL.matrixMode(LLRender::MM_MODELVIEW);
+        gGL.pushMatrix();
+        gGL.begin(LLRender::LINES);
+        gGL.color4f(color.mV[VRED], color.mV[VGREEN], color.mV[VBLUE], 1.f);
+        for (F32 radius : { size, size * 0.6f })
+        {
+            for (S32 i = 0; i < SEGMENTS; ++i)
+            {
+                const F32 a0 = F_TWO_PI * i / SEGMENTS;
+                const F32 a1 = F_TWO_PI * (i + 1) / SEGMENTS;
+                const LLVector3 p0 = target + (left * cosf(a0) + up * sinf(a0)) * radius;
+                const LLVector3 p1 = target + (left * cosf(a1) + up * sinf(a1)) * radius;
+                gGL.vertex3fv(p0.mV);
+                gGL.vertex3fv(p1.mV);
+            }
+        }
+        // crosshair reaching past the outer ring
+        for (const LLVector3& axis : { left, up })
+        {
+            const LLVector3 a = target - axis * (size * 1.3f);
+            const LLVector3 b = target + axis * (size * 1.3f);
+            gGL.vertex3fv(a.mV);
+            gGL.vertex3fv(b.mV);
+        }
+        gGL.end();
+        gGL.popMatrix();
+    }
+}
+// </FS:Perf>
+
 void LLHUDEffectLookAt::render()
 {
     if (mDebugLookAt && mSourceObject.notNull())
@@ -714,18 +765,29 @@ void LLHUDEffectLookAt::render()
         if ((hide_own || is_private) && ((LLVOAvatar*)(LLViewerObject*)mSourceObject)->isSelf())
             return;
 
+        // <FS:Perf> Highlight mode: constant on-screen size, rings, a line from
+        // the head, visible through geometry, larger names.
+        static LLCachedControl<bool> highlight(gSavedSettings, "FSLookAtHighlight", false);
+
         //LLGLDisable gls_stencil(GL_STENCIL_TEST);
-        LLGLDepthTest depth(GL_TRUE, GL_FALSE);  // <FS:Zi> Reduce screen clutter
+        LLGLDepthTest depth(highlight ? GL_FALSE : GL_TRUE, GL_FALSE);  // <FS:Zi> Reduce screen clutter
 
         LLVector3 target = mTargetPos + ((LLVOAvatar*)(LLViewerObject*)mSourceObject)->mHeadp->getWorldPosition();
         LLColor3 lookAtColor = (*mAttentions)[mTargetType].mColor;
+
+        if (highlight)
+        {
+            renderHighlight(target, lookAtColor);
+        }
 
         static LLCachedControl<U32> show_names(gSavedSettings, "DebugLookAtShowNames");
         if ((show_names > 0) && !gRlvHandler.hasBehaviour(RLV_BHVR_SHOWNAMES))
         {
             // render name for crosshair
-            const LLFontGL* fontp = LLFontGL::getFont(LLFontDescriptor("SansSerif", "Small", LLFontGL::NORMAL));
-            LLVector3 position = target + LLVector3(0.f, 0.f, 0.3f);
+            const LLFontGL* fontp = highlight
+                ? LLFontGL::getFont(LLFontDescriptor("SansSerif", "Large", LLFontGL::BOLD)) // <FS:Perf>
+                : LLFontGL::getFont(LLFontDescriptor("SansSerif", "Small", LLFontGL::NORMAL));
+            LLVector3 position = target + LLVector3(0.f, 0.f, highlight ? lookAtHighlightSize(target) * 1.4f : 0.3f);
 
             std::string name;
             LLAvatarName nameBuffer;
@@ -778,7 +840,7 @@ void LLHUDEffectLookAt::render()
 
             // <FS:Ansariel> FIRE-16912: Draw lines for lookat targets; by Ayamo Nozaki
             static LLCachedControl<bool> lookAtLines(gSavedSettings, "ExodusLookAtLines", false);
-            if (lookAtLines &&
+            if ((lookAtLines || highlight) && // <FS:Perf> highlight always draws the line
                 (*mAttentions)[mTargetType].mName != "None" &&
                 (*mAttentions)[mTargetType].mName != "Idle" &&
                 (*mAttentions)[mTargetType].mName != "AutoListen")
