@@ -1,4 +1,4 @@
-# Firestorm "Perf + AI": an experimental, vibe-coded fork
+# Firestorm "Perf + AI": an experimental fork built through AI-assisted development
 
 > **This is not the official Firestorm.** It is a personal, experimental fork
 > of the [Firestorm Viewer](https://github.com/FirestormViewer/phoenix-firestorm),
@@ -13,10 +13,16 @@ frame. On modern many-core CPUs this leaves most of the processor idle while
 one core carries everything, and the result is stutter, especially in crowded
 places.
 
-I built this fork by **vibe coding**. The changes were written in a
-conversation with an AI coding assistant (Claude, by Anthropic), which read the
-code, proposed changes, implemented, compiled and fixed them, while I tested
-in Second Life and reported what worked and what did not. The goals were:
+This fork was **developed with extensive AI assistance**. I worked with an AI
+coding assistant (Claude, by Anthropic) in an iterative engineering loop:
+- it audited the code to find bottlenecks;
+- it proposed and implemented changes;
+- it compiled the viewer and fixed build errors;
+- it ran stress tests and independent reviews of the concurrency code;
+- meanwhile, I tested every build in Second Life and reported what worked
+  and what did not.
+
+The goals were:
 
 1. **Performance and frame-time stability:** fewer hitches and higher FPS,
    without lowering global graphics quality.
@@ -315,8 +321,8 @@ start "" ..\..\build-vc180-64\newview\Release\firestorm-bin.exe
   - remember that the AI features can send other people's text (incoming
     messages, profiles) to the configured server. Make that clear to your
     users, and keep those features off by default.
-- This is **vibe-coded** software. It was reviewed and tested, but it may
-  still have bugs.
+- This software was **developed with extensive AI assistance**. It was
+  reviewed and tested, but it may still have bugs.
 
 ## License
 The code remains under the **GNU LGPL 2.1**, like the original project (see
