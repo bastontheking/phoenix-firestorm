@@ -928,11 +928,12 @@ class Windows_x86_64_Manifest(ViewerManifest):
             if installed_dir != out_path:
                 if install:
                     out_path = installed_dir
-                    result += 'SetOutPath ' + out_path + '\n'
+                    result += 'SetOutPath "' + out_path + '"\n'
+            # <FS:Perf> quote paths: the build tree may contain spaces
             if install:
-                result += 'File ' + pkg_file + '\n'
+                result += 'File "' + pkg_file + '"\n'
             else:
-                result += 'Delete ' + wpath(os.path.join('$INSTDIR', rel_file)) + '\n'
+                result += 'Delete "' + wpath(os.path.join('$INSTDIR', rel_file)) + '"\n'
 
         # at the end of a delete, just rmdir all the directories
         if not install:
@@ -946,7 +947,7 @@ class Windows_x86_64_Manifest(ViewerManifest):
             prev = None
             for d in deleted_dirs:
                 if d != prev:   # skip duplicates
-                    result += 'RMDir ' + wpath(os.path.join('$INSTDIR', os.path.normpath(d))) + '\n'
+                    result += 'RMDir "' + wpath(os.path.join('$INSTDIR', os.path.normpath(d))) + '"\n'
                 prev = d
 
         return result
