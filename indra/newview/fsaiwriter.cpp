@@ -86,6 +86,14 @@ namespace
                 if (c && c->is_string())
                 {
                     content = std::string(c->as_string());
+                    const boost::json::value* reasoning = message->as_object().if_contains("reasoning_content");
+                    const boost::json::value* finish = choice.if_contains("finish_reason");
+                    if (trim(content).empty() && reasoning && reasoning->is_string() && !reasoning->as_string().empty()
+                        && finish && finish->is_string() && finish->as_string() == "length")
+                    {
+                        error = "The model used its whole answer budget for reasoning. Enable FSAIWriterDisableThinking or start the server with reasoning disabled.";
+                        return false;
+                    }
                     return true;
                 }
             }
@@ -182,8 +190,9 @@ std::vector<std::string> FSAIWriter::parseSuggestions(const std::string& raw_con
 {
     std::string content = raw_content;
 
-    // Reasoning models (DeepSeek-R1, Qwen3, ...) may prepend their thinking.
-    for (const char* tag : { "</think>", "</thinking>" })
+    // Reasoning models (DeepSeek-R1, Qwen3, Gemma 4, ...) may prepend their
+    // thinking, or an empty thought channel, to the answer.
+    for (const char* tag : { "</think>", "</thinking>", "<channel|>" })
     {
         const size_t end = content.rfind(tag);
         if (end != std::string::npos)
@@ -274,7 +283,8 @@ void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_crea
         "You are a writing assistant for chat messages in the virtual world Second Life. "
         "The user gives you a message they are about to send. " + getStyleInstruction(style) + " "
         "Keep the original meaning, keep it short like a chat message, keep names, emojis and "
-        "Second Life terms unchanged, and keep the same language as the original unless asked to translate. "
+        "Second Life terms unchanged. Always answer in the same language as the user's message "
+        "(a message in Portuguese gets Portuguese versions) unless you were asked to translate. "
         "Reply with exactly three alternative versions, one per line, with no numbering, no quotes "
         "and no explanations.";
 
@@ -291,6 +301,14 @@ void FSAIWriter::rewriteCoro(std::string text, std::string style, bool more_crea
     body["temperature"] = more_creative ? 1.0 : 0.6;
     body["max_tokens"] = 600;
     body["stream"] = false;
+    if (gSavedSettings.getBOOL("FSAIWriterDisableThinking"))
+    {
+        // Reasoning models (Gemma 4, Qwen3, DeepSeek-R1...) otherwise spend
+        // the whole token budget "thinking" and return an empty answer.
+        // Understood by llama.cpp's llama-server and vLLM; ignored by most
+        // other local servers.
+        body["chat_template_kwargs"] = boost::json::object{ { "enable_thinking", false } };
+    }
 
     const std::string payload = boost::json::serialize(body);
     LLCore::BufferArray::ptr_t raw(new LLCore::BufferArray());
