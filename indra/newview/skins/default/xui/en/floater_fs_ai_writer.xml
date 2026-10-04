@@ -3,12 +3,13 @@
  name="fs_ai_writer"
  title="AI Chat Assistant Settings"
  can_resize="false"
- height="272"
+ height="330"
  width="440"
  layout="topleft"
  save_rect="true">
   <floater.string name="fetching_models">Asking the server for its models...</floater.string>
   <floater.string name="testing">Sending a test translation...</floater.string>
+  <floater.string name="history_cleared">ChatBot history cleared.</floater.string>
 
   <text
    follows="left|top"
@@ -132,6 +133,37 @@
     <combo_box.item label="English" name="en" value="English" />
     <combo_box.item label="Spanish" name="es" value="Spanish" />
   </combo_box>
+
+  <view_border
+   follows="left|top|right"
+   layout="topleft"
+   left="10"
+   right="-10"
+   top_pad="10"
+   height="1"
+   bevel_style="in"
+   name="separator2" />
+  <check_box
+   follows="left|top"
+   layout="topleft"
+   left="10"
+   top_pad="10"
+   height="16"
+   width="300"
+   label="ChatBot: search the web for each question"
+   tool_tip="The question is searched on the web (FSAIChatbotSearchURL, DuckDuckGo by default) and the results are given to the AI, which cites them"
+   control_name="FSAIChatbotWebSearch"
+   name="chatbot_websearch_check" />
+  <button
+   follows="right|top"
+   layout="topleft"
+   right="-10"
+   top_delta="-3"
+   height="22"
+   width="120"
+   label="Clear history"
+   tool_tip="Erase the ChatBot (History) conversation"
+   name="chatbot_clear_btn" />
 
   <text
    follows="left|top|right"

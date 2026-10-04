@@ -27,6 +27,7 @@
 #include "fsfloateraiwriter.h"
 
 #include "fsaiwriter.h"
+#include "fsfloateraichatbot.h"
 #include "llbutton.h"
 #include "llcombobox.h"
 #include "lltextbox.h"
@@ -45,6 +46,11 @@ bool FSFloaterAIWriter::postBuild()
     getChild<LLButton>("fetch_models_btn")->setClickedCallback([this](LLUICtrl*, const LLSD&) { onFetchModels(); });
     getChild<LLButton>("test_btn")->setClickedCallback([this](LLUICtrl*, const LLSD&) { onTest(); });
     getChild<LLButton>("close_btn")->setClickedCallback([this](LLUICtrl*, const LLSD&) { closeFloater(); });
+    getChild<LLButton>("chatbot_clear_btn")->setClickedCallback([this](LLUICtrl*, const LLSD&)
+    {
+        FSFloaterAIChatbot::clearSavedHistory();
+        setStatus(getString("history_cleared"));
+    });
 
     mModelCombo->setTextEntry(gSavedSettings.getString("FSAIWriterModel"));
     auto save_model = [this](LLUICtrl*, const LLSD&)

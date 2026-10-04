@@ -1,6 +1,6 @@
 /**
  * @file fsfloateraichatbot.cpp
- * @brief Chat bot tab in the conversations window, backed by the user's own LLM
+ * @brief Chat bot tabs in the conversations window, backed by the user's own LLM
  *
  * $LicenseInfo:firstyear=2026&license=viewerlgpl$
  * Phoenix Firestorm Viewer Source Code
@@ -27,26 +27,21 @@
 #include "fsfloateraichatbot.h"
 
 #include "fsaiwriter.h"
-#include "fsnearbychathub.h"
 #include "llbutton.h"
-#include "llcheckboxctrl.h"
 #include "lldir.h"
+#include "llfile.h"
 #include "llfloaterreg.h"
 #include "lllineeditor.h"
 #include "llsdserialize.h"
+#include "llsdutil.h"
 #include "lltextbox.h"
 #include "lltexteditor.h"
-#include "lltrans.h"
 #include "llviewercontrol.h"
 #include "llviewerchat.h"
-
-#include <fstream>
 
 namespace
 {
     constexpr size_t MAX_STORED_ENTRIES = 200;
-    constexpr size_t MAX_CHAT_BYTES = 1000; // nearby chat limit is 1023 bytes per message
-    constexpr size_t MAX_CHAT_PARTS = 4;
 
     // Markdown emphasis is noise in a plain text box.
     std::string tidyReply(std::string text)
@@ -56,46 +51,11 @@ namespace
         LLStringUtil::trim(text);
         return text;
     }
-
-    // Split text into chat-sized parts at word boundaries.
-    std::vector<std::string> splitForChat(const std::string& text)
-    {
-        std::vector<std::string> parts;
-        std::string remaining = text;
-        LLStringUtil::replaceString(remaining, "\n", " ");
-        LLStringUtil::trim(remaining);
-        while (!remaining.empty() && parts.size() < MAX_CHAT_PARTS)
-        {
-            if (remaining.size() <= MAX_CHAT_BYTES)
-            {
-                parts.push_back(remaining);
-                remaining.clear();
-                break;
-            }
-            size_t cut = remaining.rfind(' ', MAX_CHAT_BYTES);
-            if (cut == std::string::npos || cut < MAX_CHAT_BYTES / 2)
-            {
-                cut = MAX_CHAT_BYTES;
-                // do not cut inside a UTF-8 sequence
-                while (cut > 0 && (remaining[cut] & 0xC0) == 0x80)
-                {
-                    --cut;
-                }
-            }
-            parts.push_back(remaining.substr(0, cut));
-            remaining = remaining.substr(cut);
-            LLStringUtil::trim(remaining);
-        }
-        if (!remaining.empty() && !parts.empty())
-        {
-            parts.back() += " ...";
-        }
-        return parts;
-    }
 }
 
-FSFloaterAIChatbot::FSFloaterAIChatbot(const LLSD& key)
-:   LLFloater(key)
+FSFloaterAIChatbot::FSFloaterAIChatbot(const LLSD& key, bool use_history)
+:   LLFloater(key),
+    mUseHistory(use_history)
 {
 }
 
@@ -104,16 +64,16 @@ bool FSFloaterAIChatbot::postBuild()
     mChatHistory = getChild<LLTextEditor>("chatbot_history");
     mInput = getChild<LLLineEditor>("chatbot_input");
     mSendBtn = getChild<LLButton>("chatbot_send_btn");
-    mOneOffCheck = getChild<LLCheckBoxCtrl>("chatbot_oneoff_check");
-    mWebSearchCheck = getChild<LLCheckBoxCtrl>("chatbot_websearch_check");
     mStatusText = getChild<LLTextBox>("chatbot_status");
 
+    const std::string title = getString(usesHistory() ? "title_history" : "title_single");
+    setTitle(title);
+    setShortTitle(title);
+
     mChatHistory->setReadOnly(true);
-    mInput->setCommitCallback([this](LLUICtrl*, const LLSD&) { onSend(); });
     mInput->setCommitOnFocusLost(false);
+    mInput->setCommitCallback([this](LLUICtrl*, const LLSD&) { onSend(); });
     mSendBtn->setClickedCallback([this](LLUICtrl*, const LLSD&) { onSend(); });
-    getChild<LLButton>("chatbot_to_chat_btn")->setClickedCallback([this](LLUICtrl*, const LLSD&) { onSendToChat(); });
-    getChild<LLButton>("chatbot_clear_btn")->setClickedCallback([this](LLUICtrl*, const LLSD&) { onClear(); });
     getChild<LLButton>("chatbot_settings_btn")->setClickedCallback([](LLUICtrl*, const LLSD&) { LLFloaterReg::showInstance("fs_ai_writer"); });
 
     loadHistory();
@@ -121,38 +81,50 @@ bool FSFloaterAIChatbot::postBuild()
     return true;
 }
 
-std::string FSFloaterAIChatbot::historyFile() const
+// static
+std::string FSFloaterAIChatbot::historyFile()
 {
-    const std::string dir = gDirUtilp->getExpandedFilename(LL_PATH_PER_SL_ACCOUNT, "");
-    if (dir.empty())
+    if (gDirUtilp->getExpandedFilename(LL_PATH_PER_SL_ACCOUNT, "").empty())
     {
         return std::string(); // not logged in yet
     }
     return gDirUtilp->getExpandedFilename(LL_PATH_PER_SL_ACCOUNT, "ai_chatbot_history.xml");
 }
 
-void FSFloaterAIChatbot::loadHistory()
+// static
+void FSFloaterAIChatbot::clearSavedHistory()
 {
-    mHistory.clear();
+    if (FSFloaterAIChatbot* history = LLFloaterReg::findTypedInstance<FSFloaterAIChatbot>(HISTORY_NAME))
+    {
+        history->onClear();
+        return;
+    }
     const std::string file = historyFile();
     if (!file.empty())
     {
+        LLFile::remove(file);
+    }
+}
+
+void FSFloaterAIChatbot::loadHistory()
+{
+    mHistory.clear();
+    if (usesHistory())
+    {
+        const std::string file = historyFile();
         llifstream in(file.c_str());
         LLSD data;
-        if (in.is_open() && LLSDSerialize::fromXML(data, in) > 0 && data.isArray())
+        if (!file.empty() && in.is_open() && LLSDSerialize::fromXML(data, in) > 0 && data.isArray())
         {
             for (const LLSD& item : llsd::inArray(data))
             {
-                mHistory.push_back({ item["role"].asString(), item["content"].asString(), item["oneoff"].asBoolean() });
+                mHistory.push_back({ item["role"].asString(), item["content"].asString() });
             }
         }
     }
 
     mChatHistory->clear();
-    if (mHistory.empty())
-    {
-        appendLine(getString("welcome"), LLColor4::grey3, true);
-    }
+    showWelcome();
     for (const Entry& entry : mHistory)
     {
         appendEntry(entry);
@@ -161,6 +133,10 @@ void FSFloaterAIChatbot::loadHistory()
 
 void FSFloaterAIChatbot::saveHistory() const
 {
+    if (!usesHistory())
+    {
+        return;
+    }
     const std::string file = historyFile();
     if (file.empty())
     {
@@ -173,7 +149,6 @@ void FSFloaterAIChatbot::saveHistory() const
         LLSD item;
         item["role"] = mHistory[i].mRole;
         item["content"] = mHistory[i].mContent;
-        item["oneoff"] = mHistory[i].mOneOff;
         data.append(item);
     }
     llofstream out(file.c_str());
@@ -181,6 +156,11 @@ void FSFloaterAIChatbot::saveHistory() const
     {
         LLSDSerialize::toPrettyXML(data, out);
     }
+}
+
+void FSFloaterAIChatbot::showWelcome()
+{
+    appendLine(getString(usesHistory() ? "welcome_history" : "welcome_single"), LLColor4::grey3, true);
 }
 
 void FSFloaterAIChatbot::appendLine(const std::string& text, const LLColor4& color, bool italic)
@@ -204,12 +184,7 @@ void FSFloaterAIChatbot::appendEntry(const Entry& entry)
     static LLCachedControl<LLColor4> bot_color(gSavedSettings, "FSAIWriterTranslatorColor", LLColor4(0.55f, 0.9f, 0.6f, 1.f));
     if (entry.mRole == "user")
     {
-        std::string prefix = getString("you") + ": ";
-        if (entry.mOneOff)
-        {
-            prefix = getString("you_oneoff") + ": ";
-        }
-        appendLine(prefix + entry.mContent, LLColor4::white);
+        appendLine(getString("you") + ": " + entry.mContent, LLColor4::white);
     }
     else
     {
@@ -238,21 +213,27 @@ void FSFloaterAIChatbot::onSend()
     }
     mInput->clear();
 
-    const bool one_off = mOneOffCheck->get();
-    Entry user_entry{ "user", question, one_off };
+    if (question == "/clear")
+    {
+        onClear();
+        return;
+    }
+
+    Entry user_entry{ "user", question };
     mHistory.push_back(user_entry);
     appendEntry(user_entry);
     saveHistory();
 
-    if (!mWebSearchCheck->get())
+    static LLCachedControl<bool> web_search(gSavedSettings, "FSAIChatbotWebSearch", false);
+    if (!web_search)
     {
-        askModel(question, LLStringUtil::null, one_off, LLStringUtil::null);
+        askModel(question, LLStringUtil::null, LLStringUtil::null);
         return;
     }
 
     setBusy(true, getString("searching"));
     LLHandle<LLFloater> handle = getHandle();
-    FSAIWriter::webSearch(question, [handle, question, one_off](bool success, const std::vector<FSAIWriter::SearchResult>& results, const std::string& error)
+    FSAIWriter::webSearch(question, [handle, question](bool success, const std::vector<FSAIWriter::SearchResult>& results, const std::string& error)
     {
         FSFloaterAIChatbot* self = static_cast<FSFloaterAIChatbot*>(handle.get());
         if (!self)
@@ -266,18 +247,18 @@ void FSFloaterAIChatbot::onSend()
             for (size_t i = 0; i < results.size(); ++i)
             {
                 web_context += llformat("[%d] %s\n%s\n%s\n\n", (S32)i + 1, results[i].mTitle.c_str(), results[i].mUrl.c_str(), results[i].mSnippet.c_str());
-                sources += llformat("[%d] %s - %s\n", (S32)i + 1, results[i].mTitle.c_str(), results[i].mUrl.c_str());
+                sources += llformat("%d. %s - %s\n", (S32)i + 1, results[i].mTitle.c_str(), results[i].mUrl.c_str());
             }
         }
         else
         {
             self->appendLine(error, LLColor4::grey3, true);
         }
-        self->askModel(question, web_context, one_off, sources);
+        self->askModel(question, web_context, sources);
     });
 }
 
-void FSFloaterAIChatbot::askModel(const std::string& question, const std::string& web_context, bool one_off, const std::string& sources)
+void FSFloaterAIChatbot::askModel(const std::string& question, const std::string& web_context, const std::string& sources)
 {
     static LLCachedControl<U32> history_length(gSavedSettings, "FSAIChatbotHistoryLength", 30);
 
@@ -287,17 +268,14 @@ void FSFloaterAIChatbot::askModel(const std::string& question, const std::string
         "Answer in the same language the user writes in. Be clear and concise; use short paragraphs "
         "and plain text (no markdown tables)." });
 
-    // Conversation context: the latest entries, skipping one-off exchanges
-    // and the question we are about to add ourselves.
-    if (!one_off)
+    // Conversation context (history tab only): the latest entries before
+    // the question we are about to add ourselves.
+    if (usesHistory())
     {
         std::vector<FSAIWriter::ChatMessage> context;
         for (size_t i = mHistory.size() - 1; i-- > 0 && context.size() < (size_t)(U32)history_length; )
         {
-            if (!mHistory[i].mOneOff)
-            {
-                context.push_back({ mHistory[i].mRole, mHistory[i].mContent });
-            }
+            context.push_back({ mHistory[i].mRole, mHistory[i].mContent });
         }
         messages.insert(messages.end(), context.rbegin(), context.rend());
     }
@@ -306,13 +284,13 @@ void FSFloaterAIChatbot::askModel(const std::string& question, const std::string
     if (!web_context.empty())
     {
         prompt = "Web search results for the question below:\n\n" + web_context +
-                 "Using these results where relevant (cite them as [1], [2], ...), answer:\n" + question;
+                 "Using these results where relevant (cite them as (1), (2), ...), answer:\n" + question;
     }
     messages.push_back({ "user", prompt });
 
     setBusy(true, getString("thinking"));
     LLHandle<LLFloater> handle = getHandle();
-    FSAIWriter::chat(messages, [handle, one_off, sources](bool success, const std::string& reply, const std::string& error)
+    FSAIWriter::chat(messages, [handle, sources](bool success, const std::string& reply, const std::string& error)
     {
         FSFloaterAIChatbot* self = static_cast<FSFloaterAIChatbot*>(handle.get());
         if (!self)
@@ -325,7 +303,7 @@ void FSFloaterAIChatbot::askModel(const std::string& question, const std::string
             self->appendLine(error, LLColor4::red2, true);
             return;
         }
-        Entry bot_entry{ "assistant", tidyReply(reply), one_off };
+        Entry bot_entry{ "assistant", tidyReply(reply) };
         self->mHistory.push_back(bot_entry);
         self->appendEntry(bot_entry);
         if (!sources.empty())
@@ -336,30 +314,11 @@ void FSFloaterAIChatbot::askModel(const std::string& question, const std::string
     });
 }
 
-void FSFloaterAIChatbot::onSendToChat()
-{
-    for (auto it = mHistory.rbegin(); it != mHistory.rend(); ++it)
-    {
-        if (it->mRole == "assistant" && !it->mContent.empty())
-        {
-            // Explicit user action: post the last answer to nearby chat,
-            // split into chat-sized messages if needed.
-            for (const std::string& part : splitForChat(it->mContent))
-            {
-                FSNearbyChat::instance().sendChatFromViewer(part, CHAT_TYPE_NORMAL, false);
-            }
-            mStatusText->setText(getString("sent_to_chat"));
-            return;
-        }
-    }
-    mStatusText->setText(getString("nothing_to_send"));
-}
-
 void FSFloaterAIChatbot::onClear()
 {
     mHistory.clear();
     saveHistory();
     mChatHistory->clear();
-    appendLine(getString("welcome"), LLColor4::grey3, true);
+    showWelcome();
     setBusy(false, getString("cleared"));
 }

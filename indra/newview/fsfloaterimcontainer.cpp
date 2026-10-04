@@ -145,13 +145,16 @@ void FSFloaterIMContainer::initTabs()
             addFloater(floater_chat, true, IM_NOTHING_SPECIAL);
         }
     }
-    // <FS:Perf> AI chat bot tab
+    // <FS:Perf> AI chat bot tabs: plain, then with history
     if (gSavedSettings.getBOOL("FSAIChatbotEnabled"))
     {
-        LLFloater* chatbot = LLFloaterReg::getInstance("fs_ai_chatbot");
-        if (chatbot && chatbot->getHost() != this)
+        for (const char* name : { "fs_ai_chatbot", "fs_ai_chatbot_history" })
         {
-            addFloater(chatbot, false, IM_NOTHING_SPECIAL);
+            LLFloater* chatbot = LLFloaterReg::getInstance(name);
+            if (chatbot && chatbot->getHost() != this)
+            {
+                addFloater(chatbot, false, IM_NOTHING_SPECIAL);
+            }
         }
     }
     // </FS:Perf>
@@ -272,24 +275,16 @@ void FSFloaterIMContainer::addFloater(LLFloater* floaterp,
         return;
     }
 
-    // <FS:Perf> AI chat bot: locked tab right after nearby chat
+    // <FS:Perf> AI chat bots: locked tabs after the existing locked tabs
+    // (contacts, nearby chat, then the chat bots in the order they are added)
     if (floaterp->getName() == "fs_ai_chatbot")
     {
         S32 num_locked_tabs = mTabContainer->getNumLockedTabs();
         mTabContainer->unlockTabs();
-        S32 nearby_index = -1;
-        for (S32 i = 0; i < mTabContainer->getTabCount(); ++i)
-        {
-            if (dynamic_cast<FSFloaterNearbyChat*>(mTabContainer->getPanelByIndex(i)))
-            {
-                nearby_index = i;
-                break;
-            }
-        }
         LLPanel* previously_selected = mTabContainer->getCurrentPanel();
-        if (nearby_index >= 0)
+        if (num_locked_tabs > 0)
         {
-            mTabContainer->selectTab(nearby_index);
+            mTabContainer->selectTab(num_locked_tabs - 1);
             LLMultiFloater::addFloater(floaterp, false, LLTabContainer::RIGHT_OF_CURRENT);
         }
         else
