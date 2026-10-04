@@ -4,7 +4,7 @@
  title="AI Chat Assistant Settings"
  can_resize="false"
  height="374"
- width="440"
+ width="480"
  layout="topleft"
  save_rect="true">
   <floater.string name="fetching_models">Asking the server for its models...</floater.string>
@@ -71,8 +71,9 @@
    left="10"
    top_pad="10"
    height="16"
-   width="400"
-   label="Skip model reasoning (needed for Gemma 4, Qwen3 and similar on llama.cpp)"
+   width="460"
+   label="Skip model reasoning (Gemma 4, Qwen3, ...)"
+   tool_tip="Needed for reasoning models such as Gemma 4 or Qwen3 on llama.cpp: otherwise they spend the whole answer thinking"
    control_name="FSAIWriterDisableThinking"
    name="disable_thinking_check" />
 
@@ -92,8 +93,8 @@
    left="10"
    top_pad="10"
    height="16"
-   width="400"
-   label="Automatically translate incoming messages in other languages"
+   width="460"
+   label="Auto-translate incoming messages in other languages"
    tool_tip="Every chat or IM message from a person that is not already in the translation language gets a translation line right below it"
    control_name="FSAIWriterAutoTranslate"
    name="auto_translate_check" />
@@ -103,7 +104,7 @@
    left="10"
    top_pad="6"
    height="16"
-   width="400"
+   width="460"
    label="Show 'Translate message (AI)' when right-clicking a message"
    control_name="FSAIWriterTranslateMenu"
    name="translate_menu_check" />
@@ -114,7 +115,7 @@
    left="10"
    top_pad="10"
    height="16"
-   width="130"
+   width="150"
    name="translate_to_label">
     Translate messages to:
   </text>
@@ -171,7 +172,7 @@
    top_pad="4"
    height="16"
    width="300"
-   label="ChatBot: show the web sources below answers"
+   label="ChatBot: show web sources below answers"
    tool_tip="List the web pages the answer was based on (only when internet access is on)"
    control_name="FSAIChatbotShowSources"
    name="chatbot_sources_check" />
@@ -181,8 +182,8 @@
    left="10"
    top_pad="4"
    height="16"
-   width="420"
-   label="ChatBot: knows your surroundings and the profiles of avatars you ask about"
+   width="460"
+   label="ChatBot: knows your surroundings and avatar profiles"
    tool_tip="Region, nearby avatars and online friends are given to the AI; when a question mentions a nearby avatar or friend, their profile is looked up. Respects RLV name restrictions."
    control_name="FSAIChatbotSLContext"
    name="chatbot_slcontext_check" />
