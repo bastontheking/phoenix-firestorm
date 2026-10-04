@@ -208,7 +208,7 @@ A locked tab right below **Nearby Chat**, with a robot icon:
   - When a question mentions a **nearby avatar or a friend** (by display
     name, username or a distinctive first name), the viewer fetches their
     **profile**: bio, account age, partner, groups, picks and web profile.
-  - Example: *"tell me about <avatar name>"*.
+  - Example: *"tell me about [avatar name]"*.
   - Profile text is treated only as that person's self-description, never as
     instructions to the AI.
   - RLV restrictions (@shownames, @showloc) are respected.
