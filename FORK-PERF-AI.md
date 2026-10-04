@@ -32,6 +32,11 @@ own machine.
 Every code change is marked with `<FS:Perf>`. All of the work is on the
 `perf-overhaul` branch, starting right after upstream commit `48d525fca3`.
 
+**Downloads:** ready-to-use Windows builds are on the
+[Releases page](https://github.com/bastontheking/phoenix-firestorm/releases).
+There is an installer and a portable ZIP, each in an **AVX2** version
+(recommended for CPUs from 2013 onwards) and a generic version.
+
 ---
 
 ## Part 1: Performance
@@ -225,7 +230,43 @@ A locked tab right below **Nearby Chat**, with a robot icon:
 
 ---
 
-## Part 3: Smaller changes
+## Part 3: Chat history controls
+
+Both features below are **local only**: they change what is stored on your
+computer. Nothing is sent to Second Life, and the other people in the
+conversation keep their own copies.
+
+### 3.1 Delete chat history (one conversation)
+- **Delete chat history...** removes the saved transcript of **one** person
+  or group, including the automatic backup copies, and clears the
+  conversation window if it is open. It asks for confirmation first.
+- Where to find it:
+  - the trash button in the IM window toolbar, next to the history button;
+  - right-click on a person in **Contacts**, the **radar** and name lists;
+  - right-click on a conversation in the **Conversation Log**
+    (*Comm > Conversation Log*).
+- Firestorm's existing *Preferences > Privacy > Delete transcripts* still
+  deletes **every** conversation at once.
+
+### 3.2 Delete for me (one message)
+- **Right-click** any message in nearby chat or an IM and pick
+  **Delete for me**.
+- The **whole message** is removed, including every line of a long or
+  multi-line message and its AI translation line if there is one. It is
+  removed from:
+  - the window;
+  - the saved transcript;
+  - the window's in-memory list, so it does not come back when the window
+    reloads.
+- Each window remembers the exact text of its last 500 messages. For older
+  text, only the clicked line is removed, and only from the screen.
+- In the saved file, the message is matched by sender and text, newest
+  first. If the same person sent the exact same text more than once, the
+  newest copy is the one removed from the file.
+
+---
+
+## Part 4: Smaller changes
 - **Spell checker:** this already existed in Firestorm (Hunspell, with
   pt-BR included). The only change was making the dictionaries available in
   development builds.
@@ -233,7 +274,13 @@ A locked tab right below **Nearby Chat**, with a robot icon:
   keyboards, Shift+9 is `(`, so the profiler kept opening by accident. It is
   still available under *Advanced > Consoles*.
 - **Building from paths with spaces:** fixed the resource compiler (`rc.exe`)
-  include quoting in CMake.
+  include quoting in CMake, and quoted the paths in the generated NSIS
+  installer script.
+- **Installer CPU check:** the "AVX2 build available" and "your CPU lacks
+  AVX2" prompts link to this fork's releases page. Before, they showed
+  `<NO-URL>` for unofficial builds.
+- **Kept in sync with upstream:** official Firestorm `master` is merged in
+  regularly, so its fixes are included.
 
 ---
 
