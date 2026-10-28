@@ -50,6 +50,7 @@
 #undef require
 
 #include <vector>
+#include <functional>
 #include "llstring.h"
 
 #endif
@@ -164,6 +165,11 @@ public:
     // picker isn't locked.
     void reset();
 
+#if LL_FLTK
+    // <FS> Dispatches finished modeless (portal) dialogs; call once per frame from the main thread.
+    static void updateModeless();
+#endif
+
 private:
     enum
     {
@@ -213,7 +219,11 @@ private:
     {
      eSaveFile, eOpenFile, eOpenMultiple
     };
-    bool openFileDialog( int32_t filter, bool blocking, EType aType );
+    bool openFileDialog( int32_t filter, bool blocking, EType aType, const std::string& proposed_name = LLStringUtil::null );
+    bool fltkFileDialog( int32_t filter, EType aType, const std::string& proposed_name );
+    static void getDialogStrings( int32_t filter, EType aType, std::string& file_dialog_title, std::string& file_dialog_filter );
+    static void openFileDialogModeless( int32_t filter, EType aType, const std::string& proposed_name,
+                                        std::function<void(bool, std::vector<std::string>&)> done );
 #endif
 
     std::vector<std::string> mFiles;

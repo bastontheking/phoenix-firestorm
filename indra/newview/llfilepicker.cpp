@@ -44,6 +44,9 @@
 #ifdef LL_FLTK
   #include "FL/Fl.H"
   #include "FL/Fl_Native_File_Chooser.H"
+  #if LL_GLIB
+    #include <gio/gio.h> // xdg-desktop-portal file chooser
+  #endif
 #endif
 
 #if LL_LINUX
@@ -1760,23 +1763,373 @@ bool LLFilePicker::getMultipleOpenFiles( ELoadFilter filter, bool blocking)
 
 #elif LL_FLTK
 
+
+#if LL_GLIB
+// <FS> Use the xdg-desktop-portal FileChooser when available. FLTK 1.3 can only
+// show the ancient GTK2 dialog, the portal gives us the desktop's native one.
+namespace
+{
+    // Turns an FLTK style filter ("Name \t*.{tga,png}" or "*.lsl") into portal
+    // globs. Both lower and upper case variants are added, GTK3 globs are case sensitive.
+    void fltk_filter_to_portal(const std::string& fltk_filter, const std::string& fallback_name,
+                               std::string& name, std::vector<std::string>& globs)
+    {
+        std::string pattern = fltk_filter;
+        name = fallback_name;
+
+        size_t tab = fltk_filter.find('\t');
+        if (tab != std::string::npos)
+        {
+            name = fltk_filter.substr(0, tab);
+            LLStringUtil::trim(name);
+            pattern = fltk_filter.substr(tab + 1);
+        }
+        LLStringUtil::trim(pattern);
+
+        std::vector<std::string> patterns;
+        size_t open = pattern.find('{');
+        size_t close = pattern.find('}');
+        if (open != std::string::npos && close != std::string::npos && close > open)
+        {
+            std::string prefix = pattern.substr(0, open);
+            std::string suffix = pattern.substr(close + 1);
+            std::string alternatives = pattern.substr(open + 1, close - open - 1);
+            size_t start = 0;
+            while (start <= alternatives.size())
+            {
+                size_t comma = alternatives.find(',', start);
+                if (comma == std::string::npos)
+                    comma = alternatives.size();
+                patterns.push_back(prefix + alternatives.substr(start, comma - start) + suffix);
+                start = comma + 1;
+            }
+        }
+        else if (!pattern.empty())
+        {
+            patterns.push_back(pattern);
+        }
+
+        for (const std::string& p : patterns)
+        {
+            std::string lower = p, upper = p;
+            LLStringUtil::toLower(lower);
+            LLStringUtil::toUpper(upper);
+            globs.push_back(lower);
+            if (upper != lower)
+                globs.push_back(upper);
+        }
+    }
+
+    // All portal D-Bus callbacks are dispatched on this context, which the main loop
+    // pumps every frame through LLFilePicker::updateModeless().
+    GMainContext* portal_context()
+    {
+        static GMainContext* sContext = g_main_context_new();
+        return sContext;
+    }
+
+    typedef std::function<void(bool portal_ok, std::vector<std::string>& files)> portal_done_t;
+
+    struct PortalRequest
+    {
+        GDBusConnection* bus = nullptr;
+        guint subscription = 0;
+        portal_done_t done;
+        bool save = false;
+        bool directory = false;
+        bool call_finished = false; // OpenFile/SaveFile method reply arrived
+        bool answered = false;      // done() has been called
+
+        ~PortalRequest()
+        {
+            if (subscription)
+                g_dbus_connection_signal_unsubscribe(bus, subscription);
+            if (bus)
+                g_object_unref(bus);
+        }
+
+        void finish(bool portal_ok, std::vector<std::string>& files)
+        {
+            if (answered)
+                return;
+            answered = true;
+            if (subscription)
+            {
+                g_dbus_connection_signal_unsubscribe(bus, subscription);
+                subscription = 0;
+            }
+            done(portal_ok, files);
+        }
+
+        void maybeDelete()
+        {
+            if (answered && call_finished)
+                delete this;
+        }
+    };
+
+    void on_portal_response(GDBusConnection*, const gchar*, const gchar*, const gchar*, const gchar*,
+                            GVariant* parameters, gpointer user_data)
+    {
+        PortalRequest* request = static_cast<PortalRequest*>(user_data);
+        guint32 code = 2; // 0 = ok, 1 = cancelled, 2 = other
+        GVariant* results = nullptr;
+        g_variant_get(parameters, "(u@a{sv})", &code, &results);
+
+        std::vector<std::string> files;
+        if (code == 0 && results)
+        {
+            const gchar** uris = nullptr;
+            if (g_variant_lookup(results, "uris", "^a&s", &uris) && uris)
+            {
+                for (const gchar** uri = uris; *uri; ++uri)
+                {
+                    gchar* path = g_filename_from_uri(*uri, nullptr, nullptr);
+                    if (path)
+                    {
+                        files.push_back(path);
+                        g_free(path);
+                    }
+                }
+                g_free(uris);
+            }
+        }
+        else if (code == 2)
+        {
+            LL_WARNS() << "File portal returned an error response" << LL_ENDL;
+        }
+
+        // Remember where the user picked from, so the next dialog opens there (FIRE-14924).
+        if (!files.empty())
+        {
+            std::string folder = request->directory ? files.front() : gDirUtilp->getDirName(files.front());
+            if (!folder.empty())
+                gSavedSettings.setString(request->save ? "FSFilePickerSaveDirectory" : "FSFilePickerOpenDirectory", folder);
+        }
+
+        if (results)
+            g_variant_unref(results);
+
+        request->finish(true, files);
+        request->maybeDelete();
+    }
+
+    void on_portal_call_finished(GObject* source, GAsyncResult* result, gpointer user_data)
+    {
+        PortalRequest* request = static_cast<PortalRequest*>(user_data);
+        request->call_finished = true;
+
+        GError* error = nullptr;
+        GVariant* reply = g_dbus_connection_call_finish(G_DBUS_CONNECTION(source), result, &error);
+        if (reply)
+        {
+            g_variant_unref(reply);
+        }
+        else
+        {
+            LL_INFOS() << "File portal not available, falling back to FLTK: " << (error ? error->message : "unknown") << LL_ENDL;
+            g_clear_error(&error);
+            std::vector<std::string> files;
+            request->finish(false, files);
+        }
+        request->maybeDelete();
+    }
+
+    // Asks the portal for a file dialog without blocking. done() is always called later from
+    // the portal context, with portal_ok false if the portal could not be used (caller falls
+    // back to FLTK). Returns false, without calling done(), if there is no session bus at all.
+    bool portal_file_dialog_async(bool save, bool multiple, bool directory, const std::string& title,
+                                  const std::string& filter_name, const std::vector<std::string>& globs,
+                                  const std::string& proposed_name, portal_done_t done)
+    {
+        GError* error = nullptr;
+        GDBusConnection* bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+        if (!bus)
+        {
+            LL_INFOS() << "No session bus for the file portal: " << (error ? error->message : "unknown") << LL_ENDL;
+            g_clear_error(&error);
+            return false;
+        }
+
+        PortalRequest* request = new PortalRequest;
+        request->bus = bus;
+        request->done = done;
+        request->save = save;
+        request->directory = directory;
+
+        // Subscribe to the Response signal on the request path before calling, so we can't miss it.
+        static U32 sRequestCounter = 0;
+        std::string token = llformat("firestorm%u_%u", (U32)getpid(), ++sRequestCounter);
+        std::string sender = g_dbus_connection_get_unique_name(bus) + 1; // skip leading ':'
+        std::replace(sender.begin(), sender.end(), '.', '_');
+        std::string request_path = "/org/freedesktop/portal/desktop/request/" + sender + "/" + token;
+
+        g_main_context_push_thread_default(portal_context());
+
+        request->subscription = g_dbus_connection_signal_subscribe(bus, "org.freedesktop.portal.Desktop",
+            "org.freedesktop.portal.Request", "Response", request_path.c_str(), nullptr,
+            G_DBUS_SIGNAL_FLAGS_NO_MATCH_RULE, on_portal_response, request, nullptr);
+
+        GVariantBuilder options;
+        g_variant_builder_init(&options, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&options, "{sv}", "handle_token", g_variant_new_string(token.c_str()));
+        g_variant_builder_add(&options, "{sv}", "modal", g_variant_new_boolean(TRUE));
+        if (multiple)
+            g_variant_builder_add(&options, "{sv}", "multiple", g_variant_new_boolean(TRUE));
+        if (directory)
+            g_variant_builder_add(&options, "{sv}", "directory", g_variant_new_boolean(TRUE));
+        if (save && !proposed_name.empty())
+            g_variant_builder_add(&options, "{sv}", "current_name", g_variant_new_string(proposed_name.c_str()));
+
+        // Start in the last used folder instead of $HOME. The portal wants a NUL terminated byte string.
+        std::string last_folder = gSavedSettings.getString(save ? "FSFilePickerSaveDirectory" : "FSFilePickerOpenDirectory");
+        if (!last_folder.empty() && LLFile::isdir(last_folder))
+            g_variant_builder_add(&options, "{sv}", "current_folder", g_variant_new_bytestring(last_folder.c_str()));
+
+        if (!globs.empty())
+        {
+            GVariantBuilder patterns;
+            g_variant_builder_init(&patterns, G_VARIANT_TYPE("a(us)"));
+            for (const std::string& glob : globs)
+                g_variant_builder_add(&patterns, "(us)", 0, glob.c_str());
+            GVariant* filter = g_variant_ref_sink(g_variant_new("(sa(us))", filter_name.c_str(), &patterns));
+
+            GVariantBuilder all_patterns;
+            g_variant_builder_init(&all_patterns, G_VARIANT_TYPE("a(us)"));
+            g_variant_builder_add(&all_patterns, "(us)", 0, "*");
+            GVariant* all_filter = g_variant_new("(sa(us))", LLTrans::getString("all_files").c_str(), &all_patterns);
+
+            GVariantBuilder filters;
+            g_variant_builder_init(&filters, G_VARIANT_TYPE("a(sa(us))"));
+            g_variant_builder_add_value(&filters, filter);
+            g_variant_builder_add_value(&filters, all_filter);
+            g_variant_builder_add(&options, "{sv}", "filters", g_variant_builder_end(&filters));
+            g_variant_builder_add(&options, "{sv}", "current_filter", filter);
+            g_variant_unref(filter);
+        }
+
+        std::string parent;
+#if LL_SDL && LL_X11
+        // Only parent on a pure X11 session. Under Wayland the viewer runs through XWayland
+        // and an x11 parent makes the GTK portal open its dialog on XWayland too, where the
+        // compositor can't see the CSD shadow extents and draws its border around the shadow.
+        const char* wayland_display = getenv("WAYLAND_DISPLAY");
+        Window xwindow = LLWindowSDL::get_SDL_XWindowID();
+        if (xwindow != None && (!wayland_display || !*wayland_display))
+            parent = llformat("x11:%lx", (unsigned long)xwindow);
+#endif
+
+        g_dbus_connection_call(bus, "org.freedesktop.portal.Desktop",
+            "/org/freedesktop/portal/desktop", "org.freedesktop.portal.FileChooser",
+            save ? "SaveFile" : "OpenFile",
+            g_variant_new("(ssa{sv})", parent.c_str(), title.c_str(), &options),
+            G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NONE, -1, nullptr,
+            on_portal_call_finished, request);
+
+        g_main_context_pop_thread_default(portal_context());
+        return true;
+    }
+
+    // Blocking variant for callers that still use the modal LLFilePicker API.
+    // Returns false if the portal is not usable, so the caller can fall back to FLTK.
+    bool portal_file_dialog(bool save, bool multiple, bool directory, const std::string& title,
+                            const std::string& filter_name, const std::vector<std::string>& globs,
+                            const std::string& proposed_name, std::vector<std::string>& files)
+    {
+        bool finished = false;
+        bool portal_ok = false;
+        bool started = portal_file_dialog_async(save, multiple, directory, title, filter_name, globs, proposed_name,
+            [&](bool ok, std::vector<std::string>& result)
+            {
+                finished = true;
+                portal_ok = ok;
+                files = result;
+            });
+        if (!started)
+            return false;
+
+        while (!finished)
+            g_main_context_iteration(portal_context(), TRUE);
+        return portal_ok;
+    }
+}
+// </FS>
+#endif // LL_GLIB
+
+//static
+void LLFilePicker::updateModeless()
+{
+#if LL_GLIB
+    // Dispatch pending portal replies, this is what invokes the modeless callbacks.
+    while (g_main_context_iteration(portal_context(), FALSE))
+    {
+    }
+#endif
+}
+
+// <FS> Modeless dialogs go through the xdg-desktop-portal so the viewer keeps running
+// while the dialog is open. Without a portal we fall back to the blocking FLTK dialog.
+void LLFilePicker::openFileDialogModeless(int32_t filter, EType aType, const std::string& proposed_name,
+                                          std::function<void(bool, std::vector<std::string>&)> done)
+{
+    if (!LLFilePicker().check_local_file_access_enabled())
+    {
+        std::vector<std::string> files;
+        done(false, files);
+        return;
+    }
+
+    auto fallback = [filter, aType, proposed_name, done]()
+    {
+        LLFilePicker picker;
+        picker.fltkFileDialog(filter, aType, proposed_name);
+        done(!picker.mFiles.empty(), picker.mFiles);
+    };
+
+#if LL_GLIB
+    std::string title, fltk_filter;
+    getDialogStrings(filter, aType, title, fltk_filter);
+
+    std::string filter_name;
+    std::vector<std::string> globs;
+    if (!fltk_filter.empty())
+    {
+        fltk_filter_to_portal(fltk_filter, title, filter_name, globs);
+    }
+
+    bool started = portal_file_dialog_async(aType == eSaveFile, aType == eOpenMultiple,
+        aType != eSaveFile && filter == FFLOAD_DIRECTORY, title, filter_name, globs, proposed_name,
+        [fallback, done](bool portal_ok, std::vector<std::string>& files)
+        {
+            if (portal_ok)
+                done(!files.empty(), files);
+            else
+                fallback();
+        });
+    if (started)
+        return;
+#endif
+
+    fallback();
+}
+// </FS>
+
 bool LLFilePicker::getOpenFileModeless(ELoadFilter filter,
                                        void (*callback)(bool, std::vector<std::string> &, void*),
                                        void *userdata)
 {
-    // not supposed to be used yet, use LLFilePickerThread
-    LL_ERRS() << "NOT IMPLEMENTED" << LL_ENDL;
-    return false;
+    openFileDialogModeless(filter, eOpenFile, LLStringUtil::null,
+        [callback, userdata](bool success, std::vector<std::string>& files) { callback(success, files, userdata); });
+    return true;
 }
-
 
 bool LLFilePicker::getMultipleOpenFilesModeless(ELoadFilter filter,
                                                 void (*callback)(bool, std::vector<std::string> &, void*),
                                                 void *userdata )
 {
-    // not supposed to be used yet, use LLFilePickerThread
-    LL_ERRS() << "NOT IMPLEMENTED" << LL_ENDL;
-    return false;
+    openFileDialogModeless(filter, eOpenMultiple, LLStringUtil::null,
+        [callback, userdata](bool success, std::vector<std::string>& files) { callback(success, files, userdata); });
+    return true;
 }
 
 bool LLFilePicker::getSaveFileModeless(ESaveFilter filter,
@@ -1784,14 +2137,18 @@ bool LLFilePicker::getSaveFileModeless(ESaveFilter filter,
                                        void (*callback)(bool, std::string&, void*),
                                        void *userdata)
 {
-    // not supposed to be used yet, use LLFilePickerThread
-    LL_ERRS() << "NOT IMPLEMENTED" << LL_ENDL;
-    return false;
+    openFileDialogModeless(filter, eSaveFile, filename,
+        [callback, userdata](bool success, std::vector<std::string>& files)
+        {
+            std::string file = files.empty() ? std::string() : files.front();
+            callback(success, file, userdata);
+        });
+    return true;
 }
 
 bool LLFilePicker::getSaveFile( ESaveFilter filter, const std::string& filename, bool blocking )
 {
-    return openFileDialog( filter, blocking, eSaveFile );
+    return openFileDialog( filter, blocking, eSaveFile, filename );
 }
 
 bool LLFilePicker::getOpenFile( ELoadFilter filter, bool blocking )
@@ -1804,24 +2161,11 @@ bool LLFilePicker::getMultipleOpenFiles( ELoadFilter filter, bool blocking)
     return openFileDialog( filter, blocking, eOpenMultiple );
 }
 
-bool LLFilePicker::openFileDialog( int32_t filter, bool blocking, EType aType )
+//static
+void LLFilePicker::getDialogStrings( int32_t filter, EType aType, std::string& file_dialog_title, std::string& file_dialog_filter )
 {
-    if ( check_local_file_access_enabled() == false )
-        return false;
-
-    gViewerWindow->getWindow()->beforeDialog();
-    reset();
-    Fl_Native_File_Chooser::Type flType = Fl_Native_File_Chooser::BROWSE_FILE;
-
-    if( aType == eOpenMultiple )
-        flType = Fl_Native_File_Chooser::BROWSE_MULTI_FILE;
-    else if( aType == eSaveFile )
-        flType = Fl_Native_File_Chooser::BROWSE_SAVE_FILE;
-
-    Fl_Native_File_Chooser flDlg;
-
-    std::string file_dialog_title;
-    std::string file_dialog_filter;
+    file_dialog_title.clear();
+    file_dialog_filter.clear();
 
     if (aType == EType::eSaveFile)
     {
@@ -2017,8 +2361,60 @@ bool LLFilePicker::openFileDialog( int32_t filter, bool blocking, EType aType )
         }
     }
 
+}
+
+bool LLFilePicker::openFileDialog( int32_t filter, bool blocking, EType aType, const std::string& proposed_name )
+{
+    if ( check_local_file_access_enabled() == false )
+        return false;
+
+#if LL_GLIB
+    std::string file_dialog_title;
+    std::string file_dialog_filter;
+    getDialogStrings(filter, aType, file_dialog_title, file_dialog_filter);
+
+    std::string filter_name;
+    std::vector<std::string> globs;
+    if (!file_dialog_filter.empty())
+    {
+        fltk_filter_to_portal(file_dialog_filter, file_dialog_title, filter_name, globs);
+    }
+
+    reset();
+    if (portal_file_dialog(aType == eSaveFile, aType == eOpenMultiple,
+                           aType != eSaveFile && filter == FFLOAD_DIRECTORY,
+                           file_dialog_title, filter_name, globs, proposed_name, mFiles))
+    {
+        return !mFiles.empty();
+    }
+#endif
+
+    return fltkFileDialog(filter, aType, proposed_name);
+}
+
+bool LLFilePicker::fltkFileDialog( int32_t filter, EType aType, const std::string& proposed_name )
+{
+    gViewerWindow->getWindow()->beforeDialog();
+    reset();
+    Fl_Native_File_Chooser::Type flType = Fl_Native_File_Chooser::BROWSE_FILE;
+
+    if( aType == eOpenMultiple )
+        flType = Fl_Native_File_Chooser::BROWSE_MULTI_FILE;
+    else if( aType == eSaveFile )
+        flType = Fl_Native_File_Chooser::BROWSE_SAVE_FILE;
+
+    Fl_Native_File_Chooser flDlg;
+
+    std::string file_dialog_title;
+    std::string file_dialog_filter;
+    getDialogStrings(filter, aType, file_dialog_title, file_dialog_filter);
+
     flDlg.title(file_dialog_title.c_str());
     flDlg.type(flType);
+    if (!proposed_name.empty())
+    {
+        flDlg.preset_file(proposed_name.c_str());
+    }
 
     if (!file_dialog_filter.empty())
     {

@@ -149,7 +149,7 @@ void LLFilePickerThread::getFile()
 #if LL_WINDOWS
     // Todo: get rid of LLFilePickerThread and make this modeless
     start();
-#elif LL_DARWIN
+#elif LL_DARWIN || LL_FLTK // <FS> FLTK: modeless through the xdg-desktop-portal
     runModeless();
 #else
     run();
@@ -289,6 +289,10 @@ void LLFilePickerThread::cleanupClass()
 //static
 void LLFilePickerThread::clearDead()
 {
+#if LL_FLTK
+    LLFilePicker::updateModeless(); // <FS> may push finished pickers onto sDeadQ
+#endif
+
     if (!sDeadQ.empty())
     {
         LLMutexLock lock(sMutex);
