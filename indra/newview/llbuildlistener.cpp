@@ -228,9 +228,13 @@ void LLBuildListener::toggleMCPBridge()
 
     // Prefer the bridge's own venv (has mcp + llsd), else the system interpreter.
 #if LL_WINDOWS
-    std::string python = gDirUtilp->add(dir, ".venv", "Scripts", "python.exe");
+    // pythonw: python.exe is a console program, so Windows would open a cmd window for it.
+    // LEAP talks over pipes, which pythonw has too.
+    std::string python = gDirUtilp->add(dir, ".venv", "Scripts", "pythonw.exe");
     if (!LLFile::isfile(python))
-        python = "python";
+        python = gDirUtilp->add(dir, ".venv", "Scripts", "python.exe");
+    if (!LLFile::isfile(python))
+        python = "pythonw";
 #else
     std::string python = gDirUtilp->add(dir, ".venv", "bin", "python");
     if (!LLFile::isfile(python))
