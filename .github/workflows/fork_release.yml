@@ -1,0 +1,172 @@
+# <FS:Perf> Builds the "Perf + AI" fork for Windows, Linux and macOS with the open
+# source configuration (no FMOD, no KDU, no Havok, no code-signing secrets) and,
+# for a pushed tag, publishes everything as a pre-release.
+#
+#   git tag v7.3.0.81802-perf-ai.5 && git push origin v7.3.0.81802-perf-ai.5
+#
+# Run it by hand (Actions > Fork release > Run workflow) to only build and keep
+# the files as workflow artifacts.
+name: Fork release
+
+on:
+  push:
+    tags:
+      - "v*-perf-ai*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  AUTOBUILD_VARIABLES_FILE: ${{ github.workspace }}/build-variables/variables
+  XZ_DEFAULTS: -T0
+  FORK_CHANNEL: Perf
+
+jobs:
+  build:
+    name: ${{ matrix.os }} ${{ matrix.variant }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            variant: avx2
+          - os: windows-2022
+            variant: generic
+          - os: ubuntu-24.04
+            variant: avx2
+          - os: ubuntu-24.04
+            variant: generic
+          - os: macos-15
+            variant: generic
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
+    steps:
+      - name: Bash 4+ and GNU sed on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+        run: |
+          brew install --formula bash gnu-sed
+          echo "$(brew --prefix bash)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix gnu-sed)/libexec/gnubin" >> "$GITHUB_PATH"
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build variables
+        uses: actions/checkout@v7
+        with:
+          repository: FirestormViewer/fs-build-variables
+          path: build-variables
+
+      - uses: actions/setup-python@v7
+        id: python
+        with:
+          python-version: "3.11"
+
+      - name: Python requirements
+        shell: bash
+        run: |
+          python -m pip install -r requirements.txt
+          echo "PYTHON=${{ steps.python.outputs.python-path }}" >> "$GITHUB_ENV"
+
+      - name: Free disk space (Linux)
+        if: runner.os == 'Linux'
+        uses: jlumbroso/free-disk-space@main
+        with:
+          swap-storage: false
+
+      - name: Linux packages and GCC 14
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo add-apt-repository -y -n ppa:ubuntu-toolchain-r/test
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get install -y gcc-14 g++-14 \
+            python3-setuptools pkg-config ninja-build mesa-common-dev \
+            libgl1-mesa-dev libglu1-mesa-dev libosmesa6-dev \
+            libxinerama-dev libxrandr-dev libxcursor-dev libxfixes-dev libxft-dev \
+            libpulse-dev libunwind-dev libpipewire-0.3-dev libdbus-1-dev \
+            libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libvlc-dev libwayland-dev libfreetype6-dev libfontconfig1-dev
+          sudo apt-get clean
+          echo "CC=gcc-14" >> "$GITHUB_ENV"
+          echo "CXX=g++-14" >> "$GITHUB_ENV"
+
+      - name: Windows tools (Visual Studio 2022, Velopack CLI)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "AUTOBUILD_VSVER=170" >> "$GITHUB_ENV"
+          # vpk makes the Setup.exe and the portable ZIP. Match the Velopack library version if possible.
+          dotnet tool install -g vpk --version 0.0.1535 || dotnet tool install -g vpk
+          echo "$USERPROFILE/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Configure
+        shell: bash
+        run: |
+          args="--package --chan ${FORK_CHANNEL} -DLL_TESTS:BOOL=FALSE"
+          if [[ "${{ matrix.variant }}" == "avx2" ]]; then args+=" --avx2"; fi
+          if [[ "${{ runner.os }}" == "Windows" ]]; then args+=" --velopack"; fi
+          if [[ "${{ runner.os }}" == "Linux" ]]; then args+=" --ninja"; fi
+          autobuild configure -A64 -c ReleaseFS_open -- ${args}
+
+      - name: Build and package
+        shell: bash
+        env:
+          # The manifest defers Velopack packaging to a signing job when it sees GITHUB_ACTIONS.
+          # There is no signing job here, so let it package unsigned like a local build.
+          GITHUB_ACTIONS: ""
+        run: autobuild build -A64 -c ReleaseFS_open --no-configure
+
+      - name: Collect files
+        shell: bash
+        run: |
+          mkdir -p dist
+          shopt -s nullglob globstar
+          case "${{ runner.os }}" in
+            Windows)
+              # Velopack leaves the Setup.exe in newview/Release and the ZIP in newview/Releases
+              for f in build-*/newview/**/*_Setup.exe build-*/newview/**/*_Portable.zip; do cp -n "$f" dist/; done ;;
+            Linux)
+              for f in build-linux-*/newview/*.tar.xz; do cp "$f" dist/; done ;;
+            macOS)
+              for f in build-darwin-*/newview/*.dmg; do cp "$f" dist/; done ;;
+          esac
+          ls -la dist
+          if [ -z "$(ls dist)" ]; then echo "::error::No package was produced"; exit 1; fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: viewer-${{ runner.os }}-${{ matrix.variant }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish pre-release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          notes=.github/fork-release-notes.md
+          gh release create "${{ github.ref_name }}" dist/* \
+            --repo "${{ github.repository }}" \
+            --prerelease \
+            --title "Firestorm Perf + AI ${{ github.ref_name }} (unofficial, experimental)" \
+            --notes-file "$notes"

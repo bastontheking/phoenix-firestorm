@@ -125,36 +125,6 @@
         <key>version</key>
         <string>2.48.0</string>
       </map>
-      <key>glib</key>
-      <map>
-        <key>copyright</key>
-        <string>Copyright (C) glib project</string>
-        <key>license</key>
-        <string>LGPL</string>
-        <key>license_file</key>
-        <string>LICENSES/glib.txt</string>
-        <key>name</key>
-        <string>glib</string>
-        <key>platforms</key>
-        <map>
-          <key>linux64</key>
-          <map>
-            <key>archive</key>
-            <map>
-              <key>hash</key>
-              <string>1e74b8cc3694150a7751aeb12f3456d414412c0e</string>
-              <key>hash_algorithm</key>
-              <string>sha1</string>
-              <key>url</key>
-              <string>https://3p.firestormviewer.org/glib-2.64.6.240620740-linux64-240620740.tar.zst</string>
-            </map>
-            <key>name</key>
-            <string>linux64</string>
-          </map>
-        </map>
-        <key>version</key>
-        <string>2.48.0</string>
-      </map>
       <key>jemalloc</key>
       <map>
         <key>copyright</key>
