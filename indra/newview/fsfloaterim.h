@@ -157,7 +157,7 @@ public:
 
     void loadInitialInvitedIDs();
 
-    bool isP2PChat() const { return mIsP2PChat; }
+    bool isP2PSessionType() const { return mIsP2PChat; }
 
     void handleMinimized(bool minimized);
 
@@ -166,6 +166,8 @@ public:
     uuid_vec_t getSessionParticipants() const override;
 
     F32 onGetChatEditorOpacityCallback(ETypeTransparency type, F32 alpha);
+
+    LLUUID getSessionID() const { return mSessionID; }
 
 protected:
     void onClickCloseBtn(bool app_quitting = false) override;

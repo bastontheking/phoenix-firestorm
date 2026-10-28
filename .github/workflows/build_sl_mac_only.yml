@@ -239,7 +239,14 @@ jobs:
       - name: Install required Ubuntu packages and release some space.
         if: runner.os == 'Linux'
         run: |
-          dependencies=("python3-setuptools" "mesa-common-dev" "libgl1-mesa-dev" "libxinerama-dev" "libxrandr-dev" "libpulse-dev" "libglu1-mesa-dev" "libfreetype6-dev" "libfontconfig1-dev")
+          dependencies=(
+            python3-setuptools pkg-config ninja-build mesa-common-dev
+            libgl1-mesa-dev libglu1-mesa-dev libosmesa6-dev
+            libxinerama-dev libxrandr-dev libxcursor-dev libxfixes-dev libxft-dev
+            libpulse-dev libunwind-dev libpipewire-0.3-dev libdbus-1-dev
+            libglib2.0-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+            libvlc-dev libwayland-dev libfreetype6-dev libfontconfig1-dev
+          )
           sudo apt-get update
           sudo apt-get install -y "${dependencies[@]}"
           sudo apt-get install -y wget apt-transport-https software-properties-common
@@ -480,7 +487,9 @@ jobs:
             secrets.BUGSPLAT_DEFAULT_DB }}
           application: "Firestorm-${{ steps.version.outputs.viewer_channel}}"
           version: ${{ steps.version.outputs.viewer_version }}.${{ steps.version.outputs.viewer_build }}
-          files: ${{ runner.os == 'Windows' && '**/Release/*.{pdb,exe,dll}' || runner.os == 'macOS' && '**/Release/{Firestorm,*.dSYM}' || '**/{do-not-run-directly-firestorm-bin,*.sym}' }}
+          # llwebrtc stages its PDB/dSYM below symbols/Release/<channel>.
+          # Upload full PDBs; pdbcopy's *-public.pdb files omit source lines.
+          files: ${{ runner.os == 'Windows' && '**/{Release/*.{exe,dll},{Release,symbols/Release/**}/!(*-public).pdb}' || runner.os == 'macOS' && '**/{Release/{Firestorm,*.dSYM},symbols/Release/**/*.dSYM}' || '**/{do-not-run-directly-firestorm-bin,*.sym}' }}
           directory: "build-*"
           node-version: "24"
           dumpSyms: false
@@ -522,6 +531,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           sparse-checkout: |
+            requirements.txt
             fsutils/download_list.py
             fsutils/build_config.json
             fsutils/build_config.py
@@ -529,8 +539,13 @@ jobs:
           ref: ${{ github.head_ref || github.ref_name || 'master' }}
           fetch-depth: 1
 
-      - name: Install discord-webhook library
-        run: pip install discord-webhook
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+
+      - name: Install python requirements
+        run: python -m pip install -r requirements.txt
 
       - name: Download artifacts
         uses: actions/download-artifact@v8

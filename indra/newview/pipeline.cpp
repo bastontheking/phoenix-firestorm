@@ -134,16 +134,27 @@
 #include "SMAAAreaTex.h"
 #include "SMAASearchTex.h"
 #include "llerror.h"
-#ifndef LL_WINDOWS
-#define A_GCC 1
+
+#if LL_CLANG
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#pragma clang diagnostic ignored "-Wunused-variable"
+#elif LL_GNUC
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-function"
 #pragma GCC diagnostic ignored "-Wunused-variable"
-#if LL_LINUX
 #pragma GCC diagnostic ignored "-Wrestrict"
 #endif
+#ifndef LL_WINDOWS
+#define A_GCC 1
 #endif
 #define A_CPU 1
 #include "app_settings/shaders/class1/deferred/CASF.glsl" // This is also C++
+#if LL_CLANG
+#pragma clang diagnostic pop
+#elif LL_GNUC
+#pragma GCC diagnostic pop
+#endif
 
 extern bool gSnapshot;
 bool gShiftFrame = false;
@@ -695,6 +706,16 @@ void LLPipeline::init()
             LLFontWidthBuffer::enableBufferCollection(enable_buffers);
         });
     }
+
+    cntrl_ptr = gSavedSettings.getControl("CollectUIImageVertexBuffers");
+    if (cntrl_ptr.notNull())
+    {
+        cntrl_ptr->getCommitSignal()->connect([](LLControlVariable* control, const LLSD& value, const LLSD& previous)
+        {
+            bool enable_buffers = control->getValue().asBoolean();
+            LLUIImage::enableDisplayListsCollection(enable_buffers);
+        });
+    }
 }
 
 LLPipeline::~LLPipeline()
@@ -910,9 +931,8 @@ LLPipeline::eFBOStatus LLPipeline::doAllocateScreenBuffer(U32 resX, U32 resY)
 bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DISPLAY;
-
-    static LLCachedControl<bool> has_hdr(gSavedSettings, "RenderHDREnabled", true);
-    bool hdr = gGLManager.mGLVersion > 4.05f && has_hdr();
+    bool has_hdr = gSavedSettings.getBOOL("RenderHDREnabled");
+    bool hdr = gGLManager.mGLVersion > 4.05f && has_hdr;
 
     if (mRT == &mMainRT)
     { // hacky -- allocate auxillary buffer
@@ -1002,6 +1022,8 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
     if (!gCubeSnapshot) // hack to not re-allocate various targets for cube snapshots
     {
         LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("non-cube allocations"); // <FS:Beq/> improve Tracy scoping 
+        U32 post_color_fmt = gSavedSettings.getBOOL("RenderHighPrecisionPostProcess") ? GL_RGBA16F : GL_RGBA;
+
         if (RenderUIBuffer)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("UIBuffer"); // <FS:Beq/> improve Tracy scoping 
@@ -1014,11 +1036,11 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         if (RenderFSAAType > 0)
         {
             LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("FSAABuffer"); // <FS:Beq/> improve Tracy scoping 
-            if (!mFXAAMap.allocate(resX, resY, GL_RGBA)) return false;
+            if (!mFXAAMap.allocate(resX, resY, post_color_fmt)) return false;
             if (RenderFSAAType == 2)
             {
                 LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("SMAABuffer"); // <FS:Beq/> improve Tracy scoping 
-                if (!mSMAABlendBuffer.allocate(resX, resY, GL_RGBA, false)) return false;
+                if (!mSMAABlendBuffer.allocate(resX, resY, post_color_fmt, false)) return false;
             }
         }
         else
@@ -1041,8 +1063,8 @@ bool LLPipeline::allocateScreenBufferInternal(U32 resX, U32 resY)
         }
 
         {LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("mPostMapBuffer"); // <FS:Beq/> improve Tracy scoping 
-        mPostPingMap.allocate(resX, resY, GL_RGBA);
-        mPostPongMap.allocate(resX, resY, GL_RGBA);
+        mPostPingMap.allocate(resX, resY, post_color_fmt);
+        mPostPongMap.allocate(resX, resY, post_color_fmt);
         } // <FS:Beq/> improve Tracy scoping 
         // The water exclusion mask needs its own depth buffer so we can take care of the problem of multiple water planes.
         // Should we ever make water not just a plane, it also aids with that as well as the water planes will be rendered into the mask.
@@ -1146,7 +1168,7 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
                 gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_ANISOTROPIC);
                 gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
 
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
             }
         }
@@ -1163,7 +1185,7 @@ bool LLPipeline::allocateShadowBuffer(U32 resX, U32 resY)
                 gGL.getTexUnit(0)->setTextureFilteringOption(LLTexUnit::TFO_ANISOTROPIC);
                 gGL.getTexUnit(0)->setTextureAddressMode(LLTexUnit::TAM_CLAMP);
 
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_R_TO_TEXTURE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
             }
         }
@@ -1317,6 +1339,8 @@ void LLPipeline::refreshCachedSettings()
     bool enable_buffers = gSavedSettings.getBOOL("CollectFontVertexBuffers");
     LLFontVertexBuffer::enableBufferCollection(enable_buffers);
     LLFontWidthBuffer::enableBufferCollection(enable_buffers);
+    enable_buffers = gSavedSettings.getBOOL("CollectUIImageVertexBuffers");
+    LLUIImage::enableDisplayListsCollection(enable_buffers);
 }
 
 void LLPipeline::releaseGLBuffers()
@@ -5153,8 +5177,7 @@ void LLPipeline::renderDebug()
                     //NavMesh
                     if ( pathfindingConsole->isRenderNavMesh() )
                     {
-                        gGL.flush();
-                        gGL.setLineWidth(2.0f); // <FS> Line width OGL core profile fix by Rye Mutt
+                        gGL.setLineWidth(2.0f);
                         LLGLEnable cull(GL_CULL_FACE);
                         LLGLDisable blend(GL_BLEND);
 
@@ -5178,7 +5201,7 @@ void LLPipeline::renderDebug()
 
                         gGL.flush();
                         glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-                        gGL.setLineWidth(1.0f); // <FS> Line width OGL core profile fix by Rye Mutt
+                        gGL.setLineWidth(1.0f);
                         gGL.flush();
                     }
                     //User designated path
@@ -5293,11 +5316,11 @@ void LLPipeline::renderDebug()
                                     gPathfindingProgram.uniform1f(sTint, 1.f);
                                     gPathfindingProgram.uniform1f(sAlphaScale, 1.f);
 
-                                    gGL.setLineWidth(gSavedSettings.getF32("PathfindingLineWidth")); // <FS> Line width OGL core profile fix by Rye Mutt
+                                    gGL.setLineWidth(gSavedSettings.getF32("PathfindingLineWidth"));
                                     LLGLDisable blendOut(GL_BLEND);
                                     llPathingLibInstance->renderNavMeshShapesVBO( render_order[i] );
                                     gGL.flush();
-                                    gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
+                                    gGL.setLineWidth(1.f);
                                 }
 
                                 glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
@@ -5320,7 +5343,7 @@ void LLPipeline::renderDebug()
                         LLGLEnable blend(GL_BLEND);
                         LLGLDepthTest depth(GL_TRUE, GL_FALSE, GL_GREATER);
                         gGL.flush();
-                        gGL.setLineWidth(2.0f); // <FS> Line width OGL core profile fix by Rye Mutt
+                        gGL.setLineWidth(2.0f);
                         LLGLEnable cull(GL_CULL_FACE);
 
                         gPathfindingProgram.uniform1f(sTint, gSavedSettings.getF32("PathfindingXRayTint"));
@@ -5347,7 +5370,7 @@ void LLPipeline::renderDebug()
                         gPathfindingProgram.bind();
 
                         gGL.flush();
-                        gGL.setLineWidth(1.0f); // <FS> Line width OGL core profile fix by Rye Mutt
+                        gGL.setLineWidth(1.0f);
                     }
 
                     glPolygonOffset(0.f, 0.f);
@@ -5640,7 +5663,7 @@ void LLPipeline::renderDebug()
             }
 
             /*gGL.flush();
-            gGL.setLineWidth(16-i*2); // <FS> Line width OGL core profile fix by Rye Mutt
+             gGL.setLineWidth(16-i*2);
             for (LLWorld::region_list_t::const_iterator iter = LLWorld::getInstance()->getRegionList().begin();
                     iter != LLWorld::getInstance()->getRegionList().end(); ++iter)
             {
@@ -5658,7 +5681,7 @@ void LLPipeline::renderDebug()
                 }
             }
             gGL.flush();
-            gGL.setLineWidth(1.f);*/ // <FS> Line width OGL core profile fix by Rye Mutt
+             gGL.setLineWidth(1.f);*/
         }
     }
 
@@ -7691,7 +7714,7 @@ void apply_cube_face_rotation(U32 face)
 void validate_framebuffer_object()
 {
     GLenum status;
-    status = glCheckFramebufferStatus(GL_FRAMEBUFFER_EXT);
+    status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     switch(status)
     {
         case GL_FRAMEBUFFER_COMPLETE:
@@ -10391,7 +10414,7 @@ void LLPipeline::bindReflectionProbes(LLGLSLShader& shader)
 
 void LLPipeline::unbindReflectionProbes(LLGLSLShader& shader)
 {
-    S32 channel = shader.disableTexture(LLShaderMgr::REFLECTION_PROBES, LLTexUnit::TT_CUBE_MAP);
+    S32 channel = shader.disableTexture(LLShaderMgr::REFLECTION_PROBES, LLTexUnit::TT_CUBE_MAP_ARRAY);
     if (channel > -1 && mReflectionMapManager.mTexture.notNull())
     {
         mReflectionMapManager.mTexture->unbind();

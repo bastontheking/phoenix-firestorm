@@ -194,7 +194,6 @@ uint32_t runChunks(JobState& s, uint64_t gen, bool is_worker)
 
 void workerMain(size_t index)
 {
-    LLThread::registerThreadID();
     const std::string name = "JobWorker" + std::to_string(index);
     LL_PROFILER_SET_THREAD_NAME(name.c_str());
     // Seed this thread's random generator now (job bodies may call

@@ -1960,6 +1960,7 @@ void LLViewerTextureList::processImageNotInDatabase(LLMessageSystem *msg,void **
 // guaranteed.
 void LLUIImageList::cleanUp()
 {
+    LLUIImage::cleanupClass();
     mUIImages.clear();
     mUITextureList.clear() ;
 }

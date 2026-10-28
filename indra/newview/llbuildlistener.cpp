@@ -1363,7 +1363,7 @@ void LLBuildListener::createScript(LLSD const& data)
                                   name, desc, LLSaleInfo::DEFAULT,
                                   LLInventoryItemFlags::II_FLAGS_NONE, time_corrected());
     // Created stopped so the default "Hello, Avatar!" never runs; uploadScript starts it.
-    obj->saveScript(new_item, false, true);
+    obj->saveScript(new_item, false, true, LLUUID::null);
 }
 
 void LLBuildListener::uploadScript(LLSD const& data)
@@ -1387,11 +1387,13 @@ void LLBuildListener::uploadScript(LLSD const& data)
     }
 
     bool mono = data.has("mono") ? data["mono"].asBoolean() : true;
+    // "target" ("mono", "lsl2" or "luau") wins over the older "mono" flag
+    std::string compile_target = data.has("target") ? data["target"].asString() : (mono ? "mono" : "lsl2");
     bool running = data.has("running") ? data["running"].asBoolean() : true;
     LLSD request(data);
     LLResourceUploadInfo::ptr_t info(std::make_shared<LLScriptAssetUpload>(
         obj->getID(), data["item_id"].asUUID(),
-        mono ? LLScriptAssetUpload::MONO : LLScriptAssetUpload::LSL2,
+        compile_target,
         running, LLUUID::null, data["source"].asString(),
         [request](LLUUID item_id, LLUUID task_id, LLUUID new_asset_id, LLSD result)
         {
@@ -1818,7 +1820,7 @@ void LLBuildListener::addInventoryToObject(LLSD const& data)
     copy->setCreationDate(time_corrected());
     if (item->getType() == LLAssetType::AT_LSL_TEXT)
     {
-        obj->saveScript(copy, true, true);
+        obj->saveScript(copy, true, true, LLUUID::null);
     }
     else
     {

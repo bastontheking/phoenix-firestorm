@@ -4801,7 +4801,7 @@ bool LLModelPreview::render()
                         LLPhysicsDecomp* decomp = gMeshRepo.mDecompThread;
                         if (decomp)
                         {
-                            LLMutexLock(decomp->mMutex);
+                            LLMutexLock decomp_lock(decomp->mMutex);
 
                             LLModel::Decomposition& physics = model->mPhysics;
 
@@ -4884,7 +4884,7 @@ bool LLModelPreview::render()
                                     buffer->drawRange(LLRender::TRIANGLES, 0, buffer->getNumVerts() - 1, buffer->getNumIndices(), 0);
 
                                     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                                    gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
+                                    gGL.setLineWidth(1.f);
 
                                     buffer->unmapBuffer();
                                 }
@@ -4897,7 +4897,7 @@ bool LLModelPreview::render()
                     if (mHasDegenerate)
                     {
                         // <FS:Beq> restore older functionality lost in lab importer
-                        // gGL.setLineWidth(PREVIEW_DEG_EDGE_WIDTH); // <FS> Line width OGL core profile fix by Rye Mutt
+                        // gGL.setLineWidth(PREVIEW_DEG_EDGE_WIDTH);
                         // glPointSize(PREVIEW_DEG_POINT_SIZE);
                         // gPipeline.enableLightsFullbright();
                         gGL.setLineWidth(deg_edge_width());
@@ -4931,7 +4931,7 @@ bool LLModelPreview::render()
                             LLPhysicsDecomp* decomp = gMeshRepo.mDecompThread;
                             if (decomp)
                             {
-                                LLMutexLock(decomp->mMutex);
+                                LLMutexLock decomp_lock(decomp->mMutex);
 
                                 LLModel::Decomposition& physics = model->mPhysics;
 
@@ -4980,7 +4980,7 @@ bool LLModelPreview::render()
 
                             gGL.popMatrix();
                         }
-                        gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
+                        gGL.setLineWidth(1.f);
                         glPointSize(1.f);
                         gPipeline.enableLightsPreview();
                         gGL.setSceneBlendType(LLRender::BT_ALPHA);
@@ -5112,7 +5112,7 @@ bool LLModelPreview::render()
                                 glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
                                 buffer->draw(LLRender::TRIANGLES, buffer->getNumIndices(), 0);
                                 glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-                                gGL.setLineWidth(1.f); // <FS> Line width OGL core profile fix by Rye Mutt
+                                gGL.setLineWidth(1.f);
                             }
                         }
                     }
