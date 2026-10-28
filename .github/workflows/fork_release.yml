@@ -103,7 +103,7 @@ jobs:
         run: |
           echo "AUTOBUILD_VSVER=170" >> "$GITHUB_ENV"
           # vpk makes the Setup.exe and the portable ZIP. Match the Velopack library version if possible.
-          dotnet tool install -g vpk --version 0.0.1535 || dotnet tool install -g vpk
+          dotnet tool install -g vpk --version 0.0.1535-gb21da2a || dotnet tool install -g vpk
           echo "$USERPROFILE/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Configure
@@ -119,11 +119,11 @@ jobs:
 
       - name: Build and package
         shell: bash
-        env:
-          # The manifest defers Velopack packaging to a signing job when it sees GITHUB_ACTIONS.
-          # There is no signing job here, so let it package unsigned like a local build.
-          GITHUB_ACTIONS: ""
-        run: autobuild build -A64 -c ReleaseFS_open --no-configure -- ${FS_ARGS}
+        # The manifest defers Velopack packaging to a signing job when it sees GITHUB_ACTIONS,
+        # and puts the Linux tarball in RUNNER_TEMP when that is set. There is no signing job
+        # here, so unset both and let it package unsigned like a local build, next to the build.
+        # (Setting GITHUB_ACTIONS to "" in env: does not work, the runner puts it back.)
+        run: env -u GITHUB_ACTIONS -u RUNNER_TEMP autobuild build -A64 -c ReleaseFS_open --no-configure -- ${FS_ARGS}
 
       - name: Collect files
         shell: bash
