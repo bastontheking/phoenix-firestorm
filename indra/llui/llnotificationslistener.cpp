@@ -148,7 +148,8 @@ void LLNotificationsListener::listChannelNotifications(const LLSD& params) const
     if (channel)
     {
         LLSD notifications(LLSD::emptyArray());
-        std::function<void(LLNotificationPtr)> func = [notifications](LLNotificationPtr ni) mutable
+        // By reference: a by-value capture filled a copy and the reply was always empty.
+        std::function<void(LLNotificationPtr)> func = [&notifications](LLNotificationPtr ni)
             {
                 notifications.append(asLLSD(ni));
             };

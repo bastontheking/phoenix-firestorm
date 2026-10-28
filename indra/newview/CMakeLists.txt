@@ -513,6 +513,7 @@ set(viewer_SOURCE_FILES
     llinventoryicon.cpp
     llinventoryitemslist.cpp
     llinventorylistener.cpp
+    llbuildlistener.cpp
     llinventorylistitem.cpp
     llinventorymodel.cpp
     llinventorymodelbackgroundfetch.cpp
@@ -1394,6 +1395,7 @@ set(viewer_HEADER_FILES
     llinventoryicon.h
     llinventoryitemslist.h
     llinventorylistener.h
+    llbuildlistener.h
     llinventorylistitem.h
     llinventorymodel.h
     llinventorymodelbackgroundfetch.h

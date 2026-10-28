@@ -614,7 +614,22 @@ void setControlValueCB(const LLCommandLineParser::token_vector_t& value,
                 else if (ctrl->isType(TYPE_LLSD))
                 {
                     // Command-line LLSD should support a notation format string
-                    ctrl->setValueFromNotation(onevalue(option, value), false);
+                    // <FS:MCP> On Windows the command line tokenizer strips every quote,
+                    // so a plain string (e.g. --leap "C:/python.exe plugin.py") can never
+                    // arrive as notation; fall back to the raw string in that case.
+                    //ctrl->setValueFromNotation(onevalue(option, value), false);
+                    std::string text(onevalue(option, value));
+                    std::istringstream text_stream(text);
+                    LLSD parsed;
+                    if (LLSDSerialize::fromNotation(parsed, text_stream, text.size()) > 0)
+                    {
+                        ctrl->setValue(parsed, false);
+                    }
+                    else
+                    {
+                        ctrl->setValue(LLSD(text), false);
+                    }
+                    // </FS:MCP>
                 }
                 else
                 {

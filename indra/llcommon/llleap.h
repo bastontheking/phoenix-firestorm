@@ -88,6 +88,9 @@ public:
 
     virtual ~LLLeap();
 
+    // <FS:MCP> Terminate the child process; this LLLeap deletes itself once the child is gone.
+    virtual void stop() = 0;
+
 protected:
     LLLeap();
 };

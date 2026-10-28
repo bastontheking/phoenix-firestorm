@@ -155,6 +155,11 @@ public:
     }
 
     // Normally we'd expect to arrive here only via done()
+    void stop() override
+    {
+        LLProcess::kill(mChild, "LLLeap::stop()");
+    }
+
     virtual ~LLLeapImpl()
     {
         LL_DEBUGS("LLLeap") << "destroying LLLeap(\"" << mDesc << "\")" << LL_ENDL;

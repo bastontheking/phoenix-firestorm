@@ -107,6 +107,8 @@ public:
     void            loadModel(S32 lod, const std::string& file_name, bool force_disable_slm = false);
 
     void            loadHighLodModel();
+    // <FS:MCP> Load a high LOD file by path and also pick up <name>_LOD0/1/2 and _PHYS siblings
+    void            loadHighLodModelFile(const std::string& file_name);
 
     void onViewOptionChecked(LLUICtrl* ctrl);
     void onUploadOptionChecked(LLUICtrl* ctrl);

@@ -32,6 +32,7 @@
 #include "chatbar_as_cmdline.h"
 #include "fscommon.h"
 #include "fsfloaternearbychat.h"
+#include "fsnearbychatbarlistener.h"
 #include "fsnearbychatcontrol.h"
 #include "llagent.h"            // gAgent
 #include "llanimationstates.h"  // ANIM_AGENT_WHISPER, ANIM_AGENT_TALK, ANIM_AGENT_SHOUT
@@ -46,6 +47,10 @@
 #include "llworld.h"
 #include "rlvactions.h"
 #include "rlvhandler.h"
+
+// LEAP "LLChatBar" (sendChat). Linden's LLFloaterIMNearbyChatListener is compiled out in
+// Firestorm and nothing created this replacement, so the pump had no listener at all.
+static FSNearbyChatBarListener sChatBarListener;
 
 constexpr U32 NAME_PREDICTION_MINIMUM_LENGTH = 3;
 

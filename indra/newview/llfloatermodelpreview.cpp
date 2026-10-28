@@ -544,6 +544,14 @@ void LLFloaterModelPreview::loadHighLodModel()
     loadModel(3);
 }
 
+// <FS:MCP>
+void LLFloaterModelPreview::loadHighLodModelFile(const std::string& file_name)
+{
+    mModelPreview->mLookUpLodFiles = true;
+    loadModel(3, file_name);
+}
+// </FS:MCP>
+
 void LLFloaterModelPreview::prepareToLoadModel(S32 lod)
 {
     // <FS:Ansariel> FIRE-15204: Viewer crashes when clicking "upload model" quickly twice then closing both filepickers

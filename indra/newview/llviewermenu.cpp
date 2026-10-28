@@ -124,6 +124,7 @@
 #include "llviewergenericmessage.h"
 #include "llviewerhelp.h"
 #include "llviewermenufile.h"   // init_menu_file()
+#include "llbuildlistener.h"    // <FS:MCP> Help > MCP Server
 #include "llviewermessage.h"
 #include "llviewernetwork.h"
 #include "llviewerobjectlist.h"
@@ -12439,6 +12440,25 @@ class LLToggleUIHints : public view_listener_t
     }
 };
 
+// <FS:MCP>
+class FSToggleMCPBridge : public view_listener_t
+{
+    bool handleEvent(const LLSD& userdata)
+    {
+        LLBuildListener::toggleMCPBridge();
+        return true;
+    }
+};
+
+class FSCheckMCPBridge : public view_listener_t
+{
+    bool handleEvent(const LLSD& userdata)
+    {
+        return LLBuildListener::isMCPBridgeRunning();
+    }
+};
+// </FS:MCP>
+
 void LLUploadCostCalculator::calculateCost(const std::string& asset_type_str)
 {
     S32 upload_cost = -1;
@@ -13485,6 +13505,8 @@ void initialize_menus()
     view_listener_t::addMenu(new LLEditableSelected(), "EditableSelected");
     view_listener_t::addMenu(new LLEditableSelectedMono(), "EditableSelectedMono");
     view_listener_t::addMenu(new LLToggleUIHints(), "ToggleUIHints");
+    view_listener_t::addMenu(new FSToggleMCPBridge(), "MCPBridge.Toggle"); // <FS:MCP>
+    view_listener_t::addMenu(new FSCheckMCPBridge(), "MCPBridge.IsRunning"); // <FS:MCP>
 
 // [RLVa:KB] - Checked: RLVa-2.0.0
     enable.add("RLV.MainToggleVisible", boost::bind(&rlvMenuMainToggleVisible, _1));

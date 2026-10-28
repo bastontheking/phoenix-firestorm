@@ -85,6 +85,7 @@
 #include "llscriptfloater.h"
 #include "llscriptruntimeperms.h"
 #include "llselectmgr.h"
+#include "llbuildlistener.h" // <FS:MCP>
 #include "llstartup.h"
 #include "llsky.h"
 #include "llslurl.h"
@@ -4787,6 +4788,7 @@ void process_object_properties_family(LLMessageSystem *msg, void**user_data)
 {
     // Send the result to the corresponding requesters.
     LLSelectMgr::processObjectPropertiesFamily(msg, user_data);
+    LLBuildListener::processObjectPropertiesFamily(msg); // <FS:MCP> name/owner cache for LEAP
 
     if (NACLAntiSpamRegistry::instanceExists())
     {
