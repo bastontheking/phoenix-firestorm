@@ -2089,6 +2089,13 @@ LLViewerWindow::LLViewerWindow(const Params& p)
         max_gl_version, //don't use window level anti-aliasing, windows only
         useLegacyCursors); // <FS:LO> Legacy cursor setting from main program
 
+    // <FS:Perf> Desktop cursor theme
+    if (mWindow)
+    {
+        mWindow->setUseSystemCursors(gSavedSettings.getBOOL("FSUseSystemCursors"));
+    }
+    // </FS:Perf>
+
     if (NULL == mWindow)
     {
         LLSplashScreen::update(LLTrans::getString("StartupRequireDriverUpdate"));

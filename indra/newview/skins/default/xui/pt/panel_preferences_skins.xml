@@ -18,4 +18,5 @@
     <text name="theme_textbox3">
         (Requer reinício)
     </text>
+    <check_box label="Usar o tema de cursor do sistema nos cursores padrão" tool_tip="Usa o tema de cursor da área de trabalho para seta, texto, mão, redimensionar e espera. Os cursores das ferramentas do viewer mantêm o visual próprio. Apenas Linux." name="use_system_cursors"/>
 </panel>

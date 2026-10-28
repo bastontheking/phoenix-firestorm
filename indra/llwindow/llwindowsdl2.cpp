@@ -390,7 +390,8 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
       Lock_Display(NULL),
       //Unlock_Display(NULL), mGamma(1.0f)
       Unlock_Display(NULL), mGamma(1.0f),
-      mUseLegacyCursors(useLegacyCursors) // </FS:LO>
+      mUseLegacyCursors(useLegacyCursors), // </FS:LO>
+      mUseSystemCursors(false) // <FS:Perf>
 {
     // Initialize the keyboard
     gKeyboard = new LLKeyboardSDL();
@@ -2262,11 +2263,64 @@ void LLWindowSDL::initCursors(bool useLegacyCursors) // <FS:LO> Legacy cursor se
     mSDLCursors[UI_CURSOR_TOOLPATHFINDING_PATH_END_ADD] = makeSDLCursorFromBMP("lltoolpathfindingpathendadd.BMP", 16, 16);
     mSDLCursors[UI_CURSOR_TOOLNO] = makeSDLCursorFromBMP("llno.BMP",8,8);
 
+    // <FS:Perf> Replace the generic cursors with the desktop theme's cursors.
+    // Viewer-specific tool cursors keep their bitmaps, since themes have no equivalent.
+    if (mUseSystemCursors)
+    {
+        static const struct { ECursorType ui; SDL_SystemCursor sys; } system_cursors[] =
+        {
+            { UI_CURSOR_ARROW,    SDL_SYSTEM_CURSOR_ARROW },
+            { UI_CURSOR_WAIT,     SDL_SYSTEM_CURSOR_WAIT },
+            { UI_CURSOR_HAND,     SDL_SYSTEM_CURSOR_HAND },
+            { UI_CURSOR_IBEAM,    SDL_SYSTEM_CURSOR_IBEAM },
+            { UI_CURSOR_CROSS,    SDL_SYSTEM_CURSOR_CROSSHAIR },
+            { UI_CURSOR_SIZENWSE, SDL_SYSTEM_CURSOR_SIZENWSE },
+            { UI_CURSOR_SIZENESW, SDL_SYSTEM_CURSOR_SIZENESW },
+            { UI_CURSOR_SIZEWE,   SDL_SYSTEM_CURSOR_SIZEWE },
+            { UI_CURSOR_SIZENS,   SDL_SYSTEM_CURSOR_SIZENS },
+            { UI_CURSOR_SIZEALL,  SDL_SYSTEM_CURSOR_SIZEALL },
+            { UI_CURSOR_NO,       SDL_SYSTEM_CURSOR_NO },
+            { UI_CURSOR_WORKING,  SDL_SYSTEM_CURSOR_WAITARROW },
+            { UI_CURSOR_TOOLNO,   SDL_SYSTEM_CURSOR_NO },
+        };
+        for (const auto& entry : system_cursors)
+        {
+            // Keep the bitmap cursor if the theme can't provide this one.
+            if (SDL_Cursor* sys_cursor = SDL_CreateSystemCursor(entry.sys))
+            {
+                if (mSDLCursors[entry.ui])
+                {
+                    SDL_FreeCursor(mSDLCursors[entry.ui]);
+                }
+                mSDLCursors[entry.ui] = sys_cursor;
+            }
+        }
+    }
+    // </FS:Perf>
+
     if (getenv("LL_ATI_MOUSE_CURSOR_BUG") != NULL) {
         LL_INFOS() << "Disabling cursor updating due to LL_ATI_MOUSE_CURSOR_BUG" << LL_ENDL;
         ATIbug = true;
     }
 }
+
+// <FS:Perf>
+void LLWindowSDL::setUseSystemCursors(bool use_system_cursors)
+{
+    if (use_system_cursors == mUseSystemCursors)
+    {
+        return;
+    }
+    mUseSystemCursors = use_system_cursors;
+    if (mWindow)
+    {
+        quitCursors();
+        initCursors(mUseLegacyCursors);
+        // Force updateCursor() to apply the rebuilt cursor on the next frame.
+        mCurrentCursor = UI_CURSOR_COUNT;
+    }
+}
+// </FS:Perf>
 
 void LLWindowSDL::quitCursors()
 {
@@ -2583,7 +2637,7 @@ std::vector<std::string> LLWindowSDL::getDynamicFallbackFontList()
     // Use libfontconfig to find us a nice ordered list of fallback fonts
     // specific to this system.
     std::string final_fallback("/usr/share/fonts/truetype/kochi/kochi-gothic.ttf");
-    const int max_font_count_cutoff = 40; // fonts are expensive in the current system, don't enumerate an arbitrary number of them
+    const int max_font_count_cutoff = 200; // fonts are expensive in the current system, don't enumerate an arbitrary number of them
     // Our 'ideal' font properties which define the sorting results.
     // slant=0 means Roman, index=0 means the first face in a font file
     // (the one we actually use), weight=80 means medium weight,

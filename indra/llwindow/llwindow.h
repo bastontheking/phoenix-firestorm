@@ -122,6 +122,9 @@ public:
     virtual ECursorType getCursor() const;
     virtual ECursorType getNextCursor() const { return mNextCursor; };
     virtual void updateCursor() = 0;
+    // <FS:Perf> Use the desktop's cursor theme for standard cursors where supported
+    virtual void setUseSystemCursors(bool use_system_cursors) {}
+    // </FS:Perf>
 
     virtual void captureMouse() = 0;
     virtual void releaseMouse() = 0;

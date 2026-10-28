@@ -81,6 +81,7 @@ public:
     /*virtual*/ void hideCursorUntilMouseMove();
     /*virtual*/ bool isCursorHidden();
     /*virtual*/ void updateCursor();
+    /*virtual*/ void setUseSystemCursors(bool use_system_cursors); // <FS:Perf>
     /*virtual*/ void captureMouse();
     /*virtual*/ void releaseMouse();
     /*virtual*/ void setMouseClipping( bool b );
@@ -237,6 +238,7 @@ private:
     std::string mInputType;
 
     bool mUseLegacyCursors; // <FS:LO> Legacy cursor setting from main program
+    bool mUseSystemCursors; // <FS:Perf>
 
 public:
 #if LL_X11

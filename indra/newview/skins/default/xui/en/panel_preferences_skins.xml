@@ -148,6 +148,20 @@
         (Requires restart)
     </text>
 
+    <!-- <FS:Perf> Desktop cursor theme -->
+    <check_box
+     control_name="FSUseSystemCursors"
+     follows="left|top"
+     height="16"
+     label="Use the system cursor theme for standard cursors"
+     tool_tip="Use your desktop's cursor theme for the arrow, text, hand, resize and busy cursors. Viewer tool cursors keep their own look. Linux only."
+     layout="topleft"
+     left="30"
+     top_pad="5"
+     name="use_system_cursors"
+     width="300" />
+    <!-- </FS:Perf> -->
+
 
 
 

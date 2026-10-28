@@ -383,6 +383,17 @@ static bool handleAnisotropicChanged(const LLSD& newvalue)
     return true;
 }
 
+// <FS:Perf> Desktop cursor theme
+static bool handleUseSystemCursorsChanged(const LLSD& newvalue)
+{
+    if (gViewerWindow && gViewerWindow->getWindow())
+    {
+        gViewerWindow->getWindow()->setUseSystemCursors(newvalue.asBoolean());
+    }
+    return true;
+}
+// </FS:Perf>
+
 static bool handleVSyncChanged(const LLSD& newvalue)
 {
     LLPerfStats::tunables.vsyncEnabled = newvalue.asBoolean();
@@ -1344,6 +1355,7 @@ void settings_setup_listeners()
     setting_setup_signal_listener(gSavedSettings, "RenderMaxPartCount", handleMaxPartCountChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderDynamicLOD", handleRenderDynamicLODChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderVSyncEnable", handleVSyncChanged);
+    setting_setup_signal_listener(gSavedSettings, "FSUseSystemCursors", handleUseSystemCursorsChanged); // <FS:Perf>
     setting_setup_signal_listener(gSavedSettings, "RenderDeferredNoise", handleReleaseGLBufferChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderDebugPipeline", handleRenderDebugPipelineChanged);
     setting_setup_signal_listener(gSavedSettings, "RenderResolutionDivisor", handleRenderResolutionDivisorChanged);
