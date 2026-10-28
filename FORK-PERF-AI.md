@@ -29,19 +29,25 @@ The goals were:
 2. **New features built on a local AI:** a large language model (LLM) running
    on my own machine (llama.cpp, LM Studio, Ollama...). Nothing is sent to
    cloud AI services.
+3. **Building with Claude:** a bridge that lets Claude create prims, write
+   LSL or Lua scripts and model mesh in-world through the viewer (Part 6).
 
 In my own testing it runs better than the original, but this is **not a
 formal benchmark**. The viewer includes an on-screen overlay and a
 frame-pacing log (see below), so anyone can measure before and after on their
 own machine.
 
-Every code change is marked with `<FS:Perf>`. All of the work is on the
-`perf-overhaul` branch, starting right after upstream commit `48d525fca3`.
+Code changes are marked with `<FS:Perf>` (performance), `<FS:MCP>` (the
+Claude bridge) or `<FS>` (smaller changes). All of the work is on the
+`perf-overhaul` branch, starting right after upstream commit `48d525fca3`, and
+is currently based on **Firestorm 7.3.0** (upstream `master` of October 28,
+2026).
 
 **Downloads:** ready-to-use Windows builds are on the
 [Releases page](https://github.com/bastontheking/phoenix-firestorm/releases).
 There is an installer and a portable ZIP, each in an **AVX2** version
-(recommended for CPUs from 2013 onwards) and a generic version.
+(recommended for CPUs from 2013 onwards) and a generic version. On Linux I
+build it myself (see *Building (Linux)* below).
 
 ---
 
@@ -66,7 +72,7 @@ The technical details (architecture, bottlenecks found, how to measure) are in
 |---|---|---|---|
 | Texture priorities (on-screen area of every face) | serial, main thread | parallel, job system | `FSParallelTextureStats` |
 | Low-memory emergency texture re-prioritisation | every texture in a single frame | parallel | — |
-| Texture alpha analysis and click (pick) mask | per-pixel pass on the main thread | split across cores, identical results | — |
+| Texture click (pick) mask | per-pixel pass on the main thread | split across cores, identical results | — |
 | Avatar skinning matrix palettes | built one by one inside the draw loops | all visible avatars in parallel, before culling | `FSParallelSkinningPalettes` |
 
 ### 1.3 Hitches removed
@@ -320,7 +326,80 @@ This shows only data that other viewers already broadcast:
   AVX2" prompts link to this fork's releases page. Before, they showed
   `<NO-URL>` for unofficial builds.
 - **Kept in sync with upstream:** official Firestorm `master` is merged in
-  regularly, so its fixes are included.
+  regularly, so its fixes are included. The last merge brought in 7.3.0,
+  including the new SDL3 Linux backend. Where upstream now solves the same
+  problem, the fork uses upstream's version: texture alpha analysis now runs
+  on a worker thread upstream, so the fork's parallel version was dropped.
+- **Mesh upload picks up every LOD file:** choosing the high LOD file (from
+  *Build > Upload > Mesh Model* or the High LOD *Browse* button) also loads the
+  medium, low, lowest and physics files next to it. Besides the configured
+  `_LOD2` / `_LOD1` / `_LOD0` / `_PHYS` names, it recognizes
+  `name_LOD_high` / `_LOD_medium` / `_LOD_low` / `_LOD_lowest` / `_physics`,
+  `name_high` / `_medium` / `_med` / `_low` / `_lowest` / `_phys`, and the
+  Portuguese `_LOD_alto` / `_medio` / `_baixo` / `_minimo` / `_fisica`, in any
+  letter case.
+- **Ctrl+Shift+U** opens *Upload > Mesh Model*. Firestorm used that shortcut
+  for *World > Environment > Sunrise*, which now has none.
+- **Advanced menu** (Ctrl+Alt+D), below *Fly Override*:
+  - **Fly Override on Startup** (`FSAlwaysFlyOnStartup`) turns the Fly
+    Override on every time the viewer starts.
+  - **Clear Cache on Exit** (`FSPurgeCacheOnExit`) empties the cache on every
+    normal exit: textures, objects, the asset and mesh cache, shaders, sounds
+    and the inventory cache. Web logins (`cef_cache`) are kept. Nothing is
+    cleared if the viewer crashes or if a second copy is still running.
+- **Linux file dialogs remember the last folder:** open and save dialogs start
+  in the folder used last time (`FSFilePickerOpenDirectory`,
+  `FSFilePickerSaveDirectory`) instead of the home folder. They are the
+  desktop's own dialogs (SDL3, through the xdg-desktop-portal).
+
+---
+
+## Part 6: Building with Claude (MCP bridge)
+
+*Help > MCP Server (Claude)* starts a local bridge that lets
+[Claude](https://claude.com/claude-code) build in-world through this viewer.
+The bridge itself (the MCP server, in Python) is a separate project; the
+viewer side is the LEAP API `LLBuild` in `indra/newview/llbuildlistener.*`.
+
+- **What Claude can do:** create, edit, link and delete prims; set faces,
+  materials and permissions; write and compile scripts; read chat and script
+  errors; walk, sit and take snapshots to check the result; model mesh in
+  Blender and preview it with Local Mesh before paying for an upload.
+- **It follows Second Life's rules:** it only builds where you may create
+  objects and only edits objects you may modify. Teleports, mesh uploads and
+  exports open a window for **you** to confirm; nothing that costs L$ happens
+  on its own.
+- **It only listens locally:** the server runs on `127.0.0.1` and requires a
+  token. Clicking the menu item again stops it, and it also stops when the
+  viewer closes.
+- **Lua (SLua):** besides LSL (Mono, LSL2, or LSL on the Luau VM), Claude can
+  write Lua scripts. Lua only compiles on regions that allow it
+  (`LuaScriptsEnabled`, today mostly on the Aditi beta grid); the bridge
+  checks this first and says so instead of failing.
+- Setting: `FSMCPBridgeDir` (the bridge's folder).
+
+---
+
+## Building (Linux)
+
+The steps are the same as in [`doc/BUILD.LINUX.md`](doc/BUILD.LINUX.md). I
+build on Arch Linux with GCC 16:
+
+```sh
+source .venv/bin/activate   # autobuild
+export AUTOBUILD_VARIABLES_FILE=<path>/fs-build-variables/variables
+autobuild configure -A 64 -c ReleaseFS_open -- --avx --ninja --chan=Baston --package -DLL_TESTS:BOOL=FALSE
+cd build-linux-x86_64 && ninja
+```
+
+The packaged viewer ends up in `build-linux-x86_64/newview/packaged/`; start
+it with `./firestorm` from there.
+
+If the link fails with undefined `g_once_init_enter_pointer` or
+`__res_nquery`, an old static glib from a previous configure is still in
+`build-linux-x86_64/packages/lib/release` (`libglib-2.0.a`, `libgio-2.0.a`
+and friends). Since 7.3.0 the viewer links the system glib, so move those
+files out of the way.
 
 ---
 
@@ -348,6 +427,8 @@ start "" ..\..\build-vc180-64\newview\Release\firestorm-bin.exe
 ## Important notes
 - **This is not the official Firestorm.** Please do not ask the Firestorm team
   for support with this fork.
+- The Claude bridge acts in-world as **you**, with your permissions. Watch
+  what it builds and keep the confirmations it asks for.
 - If you **distribute binaries** to other people:
   - use a different name and none of the Firestorm logos;
   - follow Linden Lab's trademark policy and the

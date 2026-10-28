@@ -18,7 +18,8 @@ idle()                                   display()
                                              └─ computeVirtualSizesParallel ──► JobSystem
                                                   (face pixel area + per-texture vsize)
                                              └─ createTexture
-                                                  └─ analyzeAlpha / pick mask ──► JobSystem
+                                                  └─ pick mask ──► JobSystem
+                                                     (alpha analysis: worker thread, upstream 7.3.0)
 frame end: LLViewerStats::updateFrameStats ─► LLFrameBudget::update (pressure)
 ```
 
@@ -69,7 +70,7 @@ HUDs are never degraded. With `FSAdaptiveQuality` off, pressure stays 0.
 | `LLPipeline::updateGeom` received a time budget but never checked it; the whole rebuild queue was drained every frame (LOD storms, teleports, region crossings) | Budgeted. Drawables that are near, avatars, attachments, rigged or HUD are always rebuilt; others are rebuilt until the budget is spent (minimum 16 per frame) |
 | Texture priority: `calcPixelArea` + face scan per texture, serial | Faces claimed serially, pixel areas and per-texture scans on the job system, bookkeeping stays serial and time-sliced |
 | Low-memory emergency path re-prioritised every texture serially in one frame | Same parallel scan |
-| `analyzeAlpha` / `updatePickMask`: per-pixel passes on the upload thread for every texture | Split across the job system for images of 256x256 or more; results identical |
+| `updatePickMask`: per-pixel pass on the upload thread for every texture | Split across the job system for images of 256x256 or more; results identical. (`analyzeAlpha` had the same treatment until upstream 7.3.0 moved it to a worker thread; the fork now uses upstream's version.) |
 | Loaded meshes were deep-copied into the system volume on the main thread, and the loaded queue was drained without limit | Faces moved instead of copied; queue applied under `FSMeshLoadedBudgetMs`, the rest re-queued |
 | Every stale impostor regenerated in the same frame (each one is a state sort + render pass) | Only the N stalest per frame |
 | Skinning palettes built lazily inside the shadow and main draw loops | Rebuilt for all visible avatars in parallel before culling |
@@ -110,7 +111,7 @@ Investigated and left unchanged:
 | `FSMeshLoadedBudgetMs` | 2 | 1000 |
 | `FSJobSystemThreads` | 0 (auto) | 1 (single worker; restart needed) |
 
-The thread pool wake-up, mesh face move, FPS limiter and alpha analysis
+The thread pool wake-up, mesh face move, FPS limiter and pick mask
 changes are not toggleable.
 
 ## Not done yet (recommended next steps)
@@ -126,6 +127,4 @@ changes are not toggleable.
 - `RenderGLMultiThreadedTextures` is off by default on Windows NVIDIA/Intel,
   so GL uploads stay on the main thread. The fence path exists; it needs
   validation per driver.
-- Moving alpha analysis fully to the decode threads, with the result carried
-  next to the raw image.
 - A persistent cache for decoded/derived mesh LOD data.
