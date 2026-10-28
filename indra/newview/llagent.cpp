@@ -578,6 +578,12 @@ void LLAgent::init()
     mIsDoSendMaturityPreferenceToServer = true;
     mIgnorePrejump = gSavedSettings.getBOOL("FSIgnoreFinishAnimation");
     gSavedSettings.getControl("FSIgnoreFinishAnimation")->getSignal()->connect(boost::bind(&LLAgent::updateIgnorePrejump, this, _2));
+    // <FS> Optionally start with the Fly Override already on
+    if (gSavedSettings.getBOOL("FSAlwaysFlyOnStartup"))
+    {
+        gSavedSettings.setBOOL("FSAlwaysFly", true);
+    }
+    // </FS>
     mAlwaysFly = gSavedSettings.getBOOL("FSAlwaysFly");
     gSavedSettings.getControl("FSAlwaysFly")->getSignal()->connect(boost::bind(&LLAgent::updateFSAlwaysFly, this, _2));
     selectAutorespond(gSavedPerAccountSettings.getBOOL("FSAutorespondMode"));

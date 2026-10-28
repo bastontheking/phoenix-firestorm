@@ -2397,6 +2397,11 @@ bool LLAppViewer::cleanup()
 
     clearSecHandler();
 
+    // <FS> Clear the cache on every exit if the user asked for it. The actual deletion happens
+    // further down, once the texture cache and the other worker threads are gone.
+    const bool purge_cache_on_exit = !mSecondInstance && gSavedSettings.getBOOL("FSPurgeCacheOnExit");
+    // </FS>
+
     if (mPurgeCacheOnExit)
     {
         LL_INFOS() << "Purging all cache files on exit" << LL_ENDL;
@@ -2524,6 +2529,25 @@ bool LLAppViewer::cleanup()
     delete mCefCachePurgeThread;
     mCefCachePurgeThread = NULL;
     // </FS:TJ>
+
+    // <FS> Purge cache on exit. Same set as the startup purge: textures, objects, the asset/mesh
+    // disk cache, shaders, sounds and the loose files (inventory cache etc.). Web logins in
+    // cef_cache are kept.
+    if (purge_cache_on_exit)
+    {
+        LL_INFOS("AppCache") << "Purging cache on exit (FSPurgeCacheOnExit)" << LL_ENDL;
+        for (const std::string& dir : { std::string("texturecache"), std::string("objectcache"), std::string("shader_cache"),
+                                        gSavedSettings.getString("DiskCacheDirName") })
+        {
+            if (!dir.empty())
+                gDirUtilp->deleteDirAndContents(gDirUtilp->getExpandedFilename(LL_PATH_CACHE, dir));
+        }
+        gDirUtilp->deleteFilesInDir(gDirUtilp->getExpandedFilename(LL_PATH_CACHE, ""), "*");
+        const std::string sound_cache = gDirUtilp->getExpandedFilename(LL_PATH_FS_SOUND_CACHE, "");
+        if (!sound_cache.empty())
+            gDirUtilp->deleteFilesInDir(sound_cache, "*");
+    }
+    // </FS>
 
     if (LLFastTimerView::sAnalyzePerformance)
     {

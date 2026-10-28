@@ -3887,6 +3887,28 @@
         </menu_item_check>
 
         <menu_item_check
+         label="Fly Override on Startup"
+         name="Fly Override on Startup">
+            <menu_item_check.on_check
+             function="CheckControl"
+             parameter="FSAlwaysFlyOnStartup" />
+            <menu_item_check.on_click
+             function="ToggleControl"
+             parameter="FSAlwaysFlyOnStartup" />
+        </menu_item_check>
+
+        <menu_item_check
+         label="Clear Cache on Exit"
+         name="Clear Cache on Exit">
+            <menu_item_check.on_check
+             function="CheckControl"
+             parameter="FSPurgeCacheOnExit" />
+            <menu_item_check.on_click
+             function="ToggleControl"
+             parameter="FSPurgeCacheOnExit" />
+        </menu_item_check>
+
+        <menu_item_check
            label="RestrainedLove API"
            name="RLV API">
               <menu_item_check.on_check

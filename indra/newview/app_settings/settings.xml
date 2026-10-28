@@ -868,6 +868,28 @@
     <integer>0</integer>
   </map>
 
+  <key>FSAlwaysFlyOnStartup</key>
+  <map>
+    <key>Comment</key>
+    <string>Turn the Fly Override on every time the viewer starts.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
+  <key>FSPurgeCacheOnExit</key>
+  <map>
+    <key>Comment</key>
+    <string>Clear the local cache (textures, objects, meshes, sounds, shaders) every time the viewer is closed.</string>
+    <key>Persist</key>
+    <integer>1</integer>
+    <key>Type</key>
+    <string>Boolean</string>
+    <key>Value</key>
+    <integer>0</integer>
+  </map>
   <key>FSAlwaysFly</key>
   <map>
     <key>Comment</key>
