@@ -113,6 +113,8 @@ jobs:
           if [[ "${{ matrix.variant }}" == "avx2" ]]; then args+=" --avx2"; fi
           if [[ "${{ runner.os }}" == "Windows" ]]; then args+=" --velopack"; fi
           if [[ "${{ runner.os }}" == "Linux" ]]; then args+=" --ninja"; fi
+          # The build step runs configure_firestorm.sh again and needs the same flags (e.g. --ninja).
+          echo "FS_ARGS=${args}" >> "$GITHUB_ENV"
           autobuild configure -A64 -c ReleaseFS_open -- ${args}
 
       - name: Build and package
@@ -121,7 +123,7 @@ jobs:
           # The manifest defers Velopack packaging to a signing job when it sees GITHUB_ACTIONS.
           # There is no signing job here, so let it package unsigned like a local build.
           GITHUB_ACTIONS: ""
-        run: autobuild build -A64 -c ReleaseFS_open --no-configure
+        run: autobuild build -A64 -c ReleaseFS_open --no-configure -- ${FS_ARGS}
 
       - name: Collect files
         shell: bash
