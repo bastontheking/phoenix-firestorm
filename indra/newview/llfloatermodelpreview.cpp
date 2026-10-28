@@ -1888,6 +1888,12 @@ void LLFloaterModelPreview::onBrowseLOD(S32 lod)
 {
     assert_main_thread();
 
+    // <FS> Browsing for the high LOD also picks up the matching LOD and physics files
+    if (lod == LLModel::LOD_HIGH)
+    {
+        mModelPreview->mLookUpLodFiles = true;
+    }
+    // </FS>
     loadModel(lod);
 }
 

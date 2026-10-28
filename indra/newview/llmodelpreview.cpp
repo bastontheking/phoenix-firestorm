@@ -4162,6 +4162,65 @@ void LLModelPreview::loadedCallback(
 
 }
 
+// <FS> Besides the configured suffixes (name.dae -> name_LOD2.dae), also find LOD and physics
+// files exported as name_LOD_high.dae / name_LOD_medium.dae / name_physics.dae, name_high.dae /
+// name_low.dae, or the Portuguese name_LOD_alto / _medio / _baixo / _minimo / _fisica.
+// The match is case insensitive. Returns an empty string if nothing is found.
+static std::string findAlternateLodFile(const std::string& high_file, S32 lod)
+{
+    static const std::vector<std::string> high_tags = { "_lod_high", "_high", "_lod_alto", "_alto", "_lod3" };
+    static const std::vector<std::string> lod_tags[LLModel::NUM_LODS] =
+    {
+        { "_lod_lowest", "_lowest", "_lod_minimo", "_minimo" },                        // LOD_IMPOSTOR
+        { "_lod_low", "_low", "_lod_baixo", "_baixo" },                                // LOD_LOW
+        { "_lod_medium", "_medium", "_lod_medio", "_medio", "_lod_med", "_med" },      // LOD_MEDIUM
+        {},                                                                            // LOD_HIGH
+        { "_physics", "_lod_physics", "_phys", "_lod_phys", "_fisica", "_lod_fisica" } // LOD_PHYSICS
+    };
+    if (lod < 0 || lod >= LLModel::NUM_LODS || lod_tags[lod].empty())
+        return std::string();
+
+    std::filesystem::path high_path(high_file);
+    std::string stem = high_path.stem().string();
+    std::string ext = high_path.extension().string();
+    LLStringUtil::toLower(stem);
+    LLStringUtil::toLower(ext);
+
+    std::vector<std::string> bases;
+    for (const std::string& tag : high_tags)
+    {
+        if (stem.size() > tag.size() && stem.compare(stem.size() - tag.size(), tag.size(), tag) == 0)
+        {
+            bases.push_back(stem.substr(0, stem.size() - tag.size()));
+            break;
+        }
+    }
+    bases.push_back(stem);
+
+    std::error_code ec;
+    std::map<std::string, std::string> dir_files; // lower case file name -> real path
+    for (const auto& entry : std::filesystem::directory_iterator(high_path.parent_path(), ec))
+    {
+        if (!entry.is_regular_file(ec))
+            continue;
+        std::string name = entry.path().filename().string();
+        LLStringUtil::toLower(name);
+        dir_files[name] = entry.path().string();
+    }
+
+    for (const std::string& base : bases)
+    {
+        for (const std::string& tag : lod_tags[lod])
+        {
+            auto found = dir_files.find(base + tag + ext);
+            if (found != dir_files.end() && found->second != high_file)
+                return found->second;
+        }
+    }
+    return std::string();
+}
+// </FS>
+
 void LLModelPreview::lookupLODModelFiles(S32 lod)
 {
     if (lod == LLModel::LOD_PHYSICS)
@@ -4196,6 +4255,15 @@ void LLModelPreview::lookupLODModelFiles(S32 lod)
         // Replace extension with LOD suffix + original extension
         std::string lod_file_to_check = lod_filename;
         lod_file_to_check.replace(ext_pos, found_ext.size(), getLodSuffix(next_lod) + found_ext);
+
+        // <FS> fall back to the other common naming schemes
+        if (!gDirUtilp->fileExists(lod_file_to_check))
+        {
+            std::string alternate = findAlternateLodFile(lod_filename, next_lod);
+            if (!alternate.empty())
+                lod_file_to_check = alternate;
+        }
+        // </FS>
 
         if (gDirUtilp->fileExists(lod_file_to_check))
         {
