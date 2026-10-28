@@ -481,6 +481,17 @@ namespace
         return info;
     }
 
+    // Lua (SLua) only compiles on regions whose simulator features say so.
+    // Returns an LLSD boolean, or undefined while the features have not arrived yet.
+    LLSD region_lua_enabled(LLViewerRegion* region)
+    {
+        if (!region || !region->simulatorFeaturesReceived())
+            return LLSD();
+        LLSD features;
+        region->getSimulatorFeatures(features);
+        return LLSD::Boolean(features["LuaScriptsEnabled"].asBoolean());
+    }
+
     // Fetches an object's task inventory and replies once it arrives, then removes itself.
     class InventoryFetcher : public LLVOInventoryListener
     {
@@ -504,12 +515,17 @@ namespace
                 {
                     LLInventoryItem* item = dynamic_cast<LLInventoryItem*>(inv_obj.get());
                     if (!item) continue;
-                    items.append(llsd::map(
+                    LLSD entry = llsd::map(
                         "id", item->getUUID(),
                         "name", item->getName(),
                         "desc", item->getDescription(),
                         "type", LLAssetType::lookup(item->getType()),
-                        "asset_id", item->getAssetUUID()));
+                        "asset_id", item->getAssetUUID());
+                    if (item->getType() == LLAssetType::AT_LSL_TEXT)
+                    {
+                        entry["lua"] = (item->getInventorySubType() == SST_LUA);
+                    }
+                    items.append(entry);
                 }
             }
             sendReply(llsd::map("items", items, "serial", serial_num), mRequest);
@@ -603,19 +619,22 @@ LLBuildListener::LLBuildListener()
         llsd::map("ids", LLSD(), "reply", LLSD()));
 
     add("getObjectInventory",
-        "Fetch the contents of object [\"id\"]; replies with [\"items\"] (id, name, type, asset_id)",
+        "Fetch the contents of object [\"id\"]; replies with [\"items\"] (id, name, type, asset_id,\n"
+        "and for scripts [\"lua\"]: true for Lua scripts)",
         &LLBuildListener::getObjectInventory,
         llsd::map("id", LLSD(), "reply", LLSD()));
 
     add("createScript",
         "Create a new, stopped script called [\"name\"] in object [\"id\"] (default script text).\n"
+        "[\"lua\"] true creates a Lua script (the region must allow Lua).\n"
         "Use getObjectInventory to learn its item id, then uploadScript.",
         &LLBuildListener::createScript,
         llsd::map("id", LLSD(), "name", LLSD(), "reply", LLSD()));
 
     add("uploadScript",
         "Upload LSL [\"source\"] to script [\"item_id\"] in object [\"id\"] and compile it\n"
-        "(optional [\"mono\"] default true, [\"running\"] default true).\n"
+        "(optional [\"target\"]: \"mono\" (default), \"lsl2\", \"lsl-luau\" or \"luau\" for Lua scripts;\n"
+        "older [\"mono\"] flag still works; [\"running\"] default true).\n"
         "Replies with [\"compiled\"] and [\"errors\"].",
         &LLBuildListener::uploadScript,
         llsd::map("id", LLSD(), "item_id", LLSD(), "source", LLSD(), "reply", LLSD()));
@@ -947,6 +966,7 @@ void LLBuildListener::getContext(LLSD const& data)
         }
     }
     response["max_prim_scale"] = LLWorld::getInstance()->getRegionMaxPrimScale();
+    response["lua_scripts_enabled"] = region_lua_enabled(region); // undefined until the simulator features arrive
 }
 
 void LLBuildListener::getObject(LLSD const& data)
@@ -1357,11 +1377,35 @@ void LLBuildListener::createScript(LLSD const& data)
                    PERM_MOVE | LLFloaterPerms::getNextOwnerPerms("Scripts"));
     std::string desc;
     LLViewerAssetType::generateDescriptionFor(LLAssetType::AT_LSL_TEXT, desc);
+    const bool lua = data["lua"].asBoolean();
+    if (lua)
+    {
+        if (!region_lua_enabled(obj->getRegion()).asBoolean())
+        {
+            return response.error("This region does not allow Lua scripts (LuaScriptsEnabled is off)");
+        }
+        // Lua scripts are their own inventory subtype; create them the way Build > Contents does.
+        if (!obj->getRegion()->getCapability("CreateTaskInventoryItem").empty())
+        {
+            obj->createInventoryItem(LLAssetType::AT_LSL_TEXT, LLInventoryType::IT_LSL, SST_LUA,
+                name, desc, perm, llsd::map("enabled", false, "vm", "luau"),
+                [](bool success, const LLSD& result)
+                {
+                    if (!success)
+                    {
+                        LL_WARNS("MCP") << "CreateTaskInventoryItem failed: " << result["message"].asString() << LL_ENDL;
+                    }
+                });
+            return;
+        }
+    }
     LLPointer<LLViewerInventoryItem> new_item =
         new LLViewerInventoryItem(LLUUID::null, LLUUID::null, perm, LLUUID::null,
                                   LLAssetType::AT_LSL_TEXT, LLInventoryType::IT_LSL,
                                   name, desc, LLSaleInfo::DEFAULT,
-                                  LLInventoryItemFlags::II_FLAGS_NONE, time_corrected());
+                                  lua ? (U32(LLInventoryItemFlags::II_FLAGS_SUBTYPE_MASK) & U32(SST_LUA))
+                                      : U32(LLInventoryItemFlags::II_FLAGS_NONE),
+                                  time_corrected());
     // Created stopped so the default "Hello, Avatar!" never runs; uploadScript starts it.
     obj->saveScript(new_item, false, true, LLUUID::null);
 }
@@ -1389,6 +1433,16 @@ void LLBuildListener::uploadScript(LLSD const& data)
     bool mono = data.has("mono") ? data["mono"].asBoolean() : true;
     // "target" ("mono", "lsl2" or "luau") wins over the older "mono" flag
     std::string compile_target = data.has("target") ? data["target"].asString() : (mono ? "mono" : "lsl2");
+    if (compile_target != "mono" && compile_target != "lsl2" && compile_target != "lsl-luau" && compile_target != "luau")
+    {
+        Response(LLSD(), data).error(stringize("Unknown target '", compile_target, "' (use mono, lsl2, lsl-luau or luau)"));
+        return;
+    }
+    if ((compile_target == "luau" || compile_target == "lsl-luau") && !region_lua_enabled(obj->getRegion()).asBoolean())
+    {
+        Response(LLSD(), data).error("This region does not allow Lua scripts (LuaScriptsEnabled is off), use mono or lsl2");
+        return;
+    }
     bool running = data.has("running") ? data["running"].asBoolean() : true;
     LLSD request(data);
     LLResourceUploadInfo::ptr_t info(std::make_shared<LLScriptAssetUpload>(
