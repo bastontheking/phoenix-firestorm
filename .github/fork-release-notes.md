@@ -25,13 +25,13 @@ Pick the file for your system. **Almost every CPU from 2013 onwards supports AVX
 
 | System | File |
 |---|---|
-| **Windows**, AVX2 (recommended) | `…Perf_AVX2…_Setup.exe` (installer) or `…Perf_AVX2…_Portable.zip` |
-| Windows, older CPUs without AVX2 | `…Perf…_Setup.exe` / `…_Portable.zip` without `AVX2` in the name |
+| **Windows**, AVX2 (recommended) | `…Perf_AVX2…_Setup.exe` |
+| Windows, older CPUs without AVX2 | `…Perf_LEGACY…_Setup.exe` |
 | **Linux**, AVX2 (recommended) | `…Perf_AVX2…tar.xz` |
 | Linux, older CPUs without AVX2 | `…tar.xz` without `AVX2` in the name |
 | **macOS** | `….dmg` |
 
-- **Windows:** the installers are not code-signed, so SmartScreen may warn you. Choose *More info > Run anyway*. Portable: unzip anywhere and run the `.exe` inside.
+- **Windows:** the installer installs to `C:\Program Files\FirestormOS-Perf`, like the official Firestorm one, and asks for administrator rights. It is not code-signed, so SmartScreen may warn you. Choose *More info > Run anyway*.
 - **Linux:** extract the archive anywhere and run `./firestorm` inside the folder. Optionally run `./install.sh` to add it to your applications menu.
 - **macOS:** the app is not notarized. On first launch, right-click it and choose *Open*, or run `xattr -dr com.apple.quarantine /path/to/Firestorm*.app`.
 

@@ -97,21 +97,18 @@ jobs:
           echo "CC=gcc-14" >> "$GITHUB_ENV"
           echo "CXX=g++-14" >> "$GITHUB_ENV"
 
-      - name: Windows tools (Visual Studio 2022, Velopack CLI)
+      - name: Windows tools (Visual Studio 2022)
         if: runner.os == 'Windows'
         shell: bash
-        run: |
-          echo "AUTOBUILD_VSVER=170" >> "$GITHUB_ENV"
-          # vpk makes the Setup.exe and the portable ZIP. Match the Velopack library version if possible.
-          dotnet tool install -g vpk --version 0.0.1535-gb21da2a || dotnet tool install -g vpk
-          echo "$USERPROFILE/.dotnet/tools" >> "$GITHUB_PATH"
+        run: echo "AUTOBUILD_VSVER=170" >> "$GITHUB_ENV"
 
       - name: Configure
         shell: bash
         run: |
+          # Windows uses the NSIS installer, like the official Firestorm builds (installs to
+          # Program Files). Velopack (--velopack) installs per user and breaks taskbar pinning.
           args="--package --chan ${FORK_CHANNEL} -DLL_TESTS:BOOL=FALSE"
           if [[ "${{ matrix.variant }}" == "avx2" ]]; then args+=" --avx2"; fi
-          if [[ "${{ runner.os }}" == "Windows" ]]; then args+=" --velopack"; fi
           if [[ "${{ runner.os }}" == "Linux" ]]; then args+=" --ninja"; fi
           # The build step runs configure_firestorm.sh again and needs the same flags (e.g. --ninja).
           echo "FS_ARGS=${args}" >> "$GITHUB_ENV"
@@ -119,7 +116,7 @@ jobs:
 
       - name: Build and package
         shell: bash
-        # The manifest defers Velopack packaging to a signing job when it sees GITHUB_ACTIONS,
+        # The manifest changes packaging when it sees GITHUB_ACTIONS (it expects a signing job)
         # and puts the Linux tarball in RUNNER_TEMP when that is set. There is no signing job
         # here, so unset both and let it package unsigned like a local build, next to the build.
         # (Setting GITHUB_ACTIONS to "" in env: does not work, the runner puts it back.)
@@ -132,8 +129,7 @@ jobs:
           shopt -s nullglob globstar
           case "${{ runner.os }}" in
             Windows)
-              # Velopack leaves the Setup.exe in newview/Release and the ZIP in newview/Releases
-              for f in build-*/newview/**/*_Setup.exe build-*/newview/**/*_Portable.zip; do cp -n "$f" dist/; done ;;
+              for f in build-*/newview/**/*_Setup.exe; do cp -n "$f" dist/; done ;;
             Linux)
               for f in build-linux-*/newview/*.tar.xz; do cp "$f" dist/; done ;;
             macOS)
